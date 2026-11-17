@@ -41,16 +41,16 @@ Web UI             └── 文件系统 / 来源 / 本工具存储
 
 ## 数据模型
 
-| 对象 | 主要字段 |
-| --- | --- |
-| Project | id、name、path、canonicalPath |
-| Scope | global / project、projectId |
-| Installation | id、scope、name、metadata、locations、realPath、diagnostics |
-| Location | entryPath、rootPath、tool、symlinkTarget、linkState |
-| Provenance | manager、recordPath、recordKey、source、ref、commit、hashes、confidence |
-| Detail | Installation、原文、Markdown 正文、文件清单、诊断 |
-| Baseline（B） | 算法版本、可信文件清单、来源快照与对应提交 |
-| Operation（C） | 预览、前置条件、快照、执行日志、恢复状态 |
+| 对象           | 主要字段                                                                |
+| -------------- | ----------------------------------------------------------------------- |
+| Project        | id、name、path、canonicalPath                                           |
+| Scope          | global / project、projectId                                             |
+| Installation   | id、scope、name、metadata、locations、realPath、diagnostics             |
+| Location       | entryPath、rootPath、tool、symlinkTarget、linkState                     |
+| Provenance     | manager、recordPath、recordKey、source、ref、commit、hashes、confidence |
+| Detail         | Installation、原文、Markdown 正文、文件清单、诊断                       |
+| Baseline（B）  | 算法版本、可信文件清单、来源快照与对应提交                              |
+| Operation（C） | 预览、前置条件、快照、执行日志、恢复状态                                |
 
 索引可重建；Skill 文件是安装事实。上游 lock 是来源证据，不是唯一安装清单。本工具配置不是第二份事实副本。
 
