@@ -16,6 +16,8 @@ const fixture = await realpath(
 const home = join(fixture, "home");
 const project = join(fixture, "sample-project");
 const secondProject = join(fixture, "another-project");
+const installSource = join(fixture, "install-source");
+const openLog = join(fixture, "opened-directories.json");
 async function skill(root, name, description, body) {
   await mkdir(join(root, name), { recursive: true });
   await writeFile(
@@ -66,16 +68,25 @@ await skill(
   "Another project Skill",
   "# Second reader\n",
 );
+await skill(
+  installSource,
+  "installed-reader",
+  "A Skill for the installation workflow",
+  "# Installed reader\n\nInstalled through the Web UI.",
+);
 await mkdir(".local", { recursive: true });
 await writeFile(
   ".local/e2e-state.json",
-  JSON.stringify({ home, project, secondProject }),
+  JSON.stringify({ home, project, secondProject, installSource, openLog }),
 );
 const { app } = await createServer({
   home,
   projects: [project],
   token: "browser-test-session",
   configPath: join(fixture, "config.json"),
+  openDirectory: async (path) => {
+    await writeFile(openLog, JSON.stringify({ path }));
+  },
 });
 await app.listen({ host: "127.0.0.1", port: 4318 });
 async function close() {

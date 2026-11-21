@@ -32,6 +32,215 @@
   font-synthesis: none;
   -webkit-font-smoothing: antialiased;
 }
+.detail-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+}
+.danger-outline {
+  color: var(--danger) !important;
+  border-color: var(--danger-line) !important;
+}
+.danger-button {
+  background: var(--danger) !important;
+  color: var(--accent-ink) !important;
+  border-color: var(--danger) !important;
+}
+.project-dialog.operation-dialog {
+  width: 610px;
+  max-height: 90dvh;
+  overflow: auto;
+}
+.operation-dialog select {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+  background: var(--surface-2);
+  color: var(--text);
+  margin-bottom: 14px;
+}
+.operation-dialog
+  label:not(.tool-picker label):not(.uninstall-locations label) {
+  margin-top: 15px;
+}
+.operation-dialog .muted {
+  display: inline;
+  font-size: 11px;
+  padding: 0;
+}
+.operation-dialog .candidate-description {
+  margin: 8px 0 15px;
+  line-height: 1.7;
+  font-size: 12px;
+}
+.tool-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 13px;
+  margin: 15px 0;
+}
+.tool-picker legend {
+  font-size: 12px;
+  color: var(--text-2);
+  padding: 0 5px;
+}
+.tool-picker label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+}
+.tool-picker input,
+.uninstall-locations input {
+  width: auto !important;
+  accent-color: var(--accent);
+}
+.operation-scope {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  color: var(--text-2);
+  font-size: 12px;
+}
+.operation-scope > span {
+  font-size: 16px;
+  color: var(--text);
+}
+.operation-source {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 7px;
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-size: 11px;
+}
+.operation-source code {
+  color: var(--text);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+.operation-paths {
+  list-style: none;
+  padding: 0;
+  margin: 17px 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  max-height: 28dvh;
+  overflow: auto;
+  scrollbar-width: thin;
+}
+.operation-dialog .dialog-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  background: var(--surface);
+  padding-top: 14px;
+}
+.operation-paths li {
+  padding: 11px 13px;
+  border-bottom: 1px solid var(--border);
+}
+.operation-paths li:last-child {
+  border: 0;
+}
+.operation-paths span {
+  display: block;
+  font-size: 11px;
+  color: var(--text-2);
+  margin-bottom: 4px;
+}
+.operation-paths code {
+  display: block;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+  color: var(--text);
+}
+.operation-notes {
+  font-size: 12px;
+  color: var(--text-2);
+  line-height: 1.8;
+  padding-left: 18px;
+  margin: 13px 0;
+}
+.uninstall-locations label {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 12px;
+  margin-top: 8px;
+}
+.uninstall-locations input {
+  margin-top: 4px;
+}
+.uninstall-locations span {
+  min-width: 0;
+}
+.uninstall-locations code {
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+.uninstall-locations small {
+  display: block;
+  color: var(--text-3);
+  margin-top: 5px;
+}
+.operation-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-line);
+  border-radius: 8px;
+  margin: 0 28px 18px;
+  padding: 12px 15px;
+  font-size: 12px;
+}
+.operation-notice > div {
+  flex: 1;
+  min-width: 0;
+}
+.operation-notice strong {
+  font-weight: 500;
+  color: var(--accent);
+}
+.operation-notice details {
+  color: var(--text-2);
+  font-size: 11px;
+  margin-top: 5px;
+}
+.operation-notice summary {
+  cursor: pointer;
+}
+.operation-notice summary svg {
+  vertical-align: middle;
+  margin-right: 4px;
+}
+.operation-notice code {
+  display: block;
+  font-size: 10px;
+  overflow-wrap: anywhere;
+  margin-top: 5px;
+}
+.operation-notice p {
+  color: var(--danger);
+  margin-top: 6px;
+}
+.operation-dialog .error-notice {
+  margin-top: 14px;
+}
+.install-button {
+  white-space: nowrap;
+  flex-shrink: 0;
+}
 * {
   box-sizing: border-box;
 }

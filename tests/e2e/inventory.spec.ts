@@ -1,6 +1,80 @@
 import { test, expect } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 
+test("installs to a project, opens its directory, uninstalls and restores it", async ({
+  page,
+}) => {
+  const fixture = JSON.parse(
+    await readFile(".local/e2e-state.json", "utf8"),
+  ) as { installSource: string; openLog: string; project: string };
+  await page.goto("/#token=browser-test-session");
+  await page.getByRole("button", { name: "安装 Skill", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByLabel("安装范围").selectOption({ label: "sample-project" });
+  await dialog.getByLabel("来源", { exact: true }).fill(fixture.installSource);
+  await dialog.getByRole("button", { name: "读取来源", exact: true }).click();
+  await expect(
+    dialog.getByRole("combobox", { name: /选择 Skill/ }),
+  ).toBeVisible();
+  await dialog
+    .getByRole("checkbox", { name: "Claude Code", exact: true })
+    .check();
+  await dialog.getByRole("button", { name: "预览安装", exact: true }).click();
+  await expect(
+    dialog.getByRole("heading", { name: "确认安装", exact: true }),
+  ).toBeVisible();
+  await expect(
+    dialog.getByText("写入安装来源记录", { exact: true }),
+  ).toBeVisible();
+  expect(
+    await dialog.evaluate(
+      (element) => element.scrollWidth <= element.clientWidth,
+    ),
+  ).toBe(true);
+  await expect(
+    dialog.getByRole("button", { name: "确认安装", exact: true }),
+  ).toBeInViewport();
+  await expect(
+    dialog.getByRole("heading", { name: "确认安装", exact: true }),
+  ).toBeInViewport();
+  await page.screenshot({ path: ".local/install-preview.png" });
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(
+    await dialog.evaluate(
+      (element) => element.scrollWidth <= element.clientWidth,
+    ),
+  ).toBe(true);
+  await dialog.getByRole("button", { name: "确认安装", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: /installed-reader/ }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: /installed-reader/ }).click();
+  await page.getByRole("button", { name: "打开目录", exact: true }).click();
+  await expect
+    .poll(async () => JSON.parse(await readFile(fixture.openLog, "utf8")).path)
+    .toBe(`${fixture.project}/.agents/skills/installed-reader`);
+  await page.getByRole("button", { name: "卸载", exact: true }).click();
+  await dialog.getByRole("button", { name: "预览卸载", exact: true }).click();
+  await expect(
+    dialog.getByRole("heading", { name: "确认卸载", exact: true }),
+  ).toBeVisible();
+  await dialog.getByRole("button", { name: "确认卸载", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: /installed-reader/ }),
+  ).toHaveCount(0);
+  await page.getByRole("button", { name: "撤销卸载", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: /installed-reader/ }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: /installed-reader/ }).click();
+  await page.getByRole("button", { name: "卸载", exact: true }).click();
+  await dialog.getByRole("button", { name: "预览卸载", exact: true }).click();
+  await dialog.getByRole("button", { name: "确认卸载", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: /installed-reader/ }),
+  ).toHaveCount(0);
+});
+
 test("desktop inventory, safe documents, source details, search and project registration", async ({
   page,
 }) => {

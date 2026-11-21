@@ -3,10 +3,16 @@ import { randomBytes, timingSafeEqual } from "node:crypto";
 import { homedir } from "node:os";
 import { dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { readFile } from "node:fs/promises";
+import { readFile, realpath, stat } from "node:fs/promises";
 import { getSkillDetail, scanSkills } from "../core/scanner.js";
 import { errorCode, plainObject } from "../core/document.js";
 import { ProjectStore } from "./projects.js";
+import {
+  SkillOperations,
+  OperationError,
+  type InstallTool,
+} from "../core/operations.js";
+import { openDirectory } from "./open-directory.js";
 import type { AppState, Inventory, ScanOptions } from "../core/types.js";
 
 export interface ServerOptions extends Omit<ScanOptions, "project"> {
@@ -14,6 +20,7 @@ export interface ServerOptions extends Omit<ScanOptions, "project"> {
   configPath?: string;
   token?: string;
   webDirectory?: string;
+  openDirectory?: (path: string) => Promise<void>;
 }
 const MIME: Record<string, string> = {
   ".js": "text/javascript",
@@ -33,6 +40,35 @@ export async function createServer(options: ServerOptions = {}) {
   await store.load(options.projects);
   const inventories = new Map<string, Inventory>();
   const pending = new Map<string, Promise<Inventory>>();
+  let generation = 0;
+  function optionsFor(scopeId: string): ScanOptions {
+    const project =
+      scopeId === "global"
+        ? undefined
+        : store.projects.find((p) => p.id === scopeId);
+    if (scopeId !== "global" && !project)
+      throw new OperationError("项目未登记。", 404);
+    return {
+      ...options,
+      home,
+      project: project?.path,
+      additionalRoots: project ? undefined : options.additionalRoots,
+    };
+  }
+  const operations = new SkillOperations(
+    join(dirname(store.path), "operations"),
+    optionsFor,
+    () => [
+      optionsFor("global"),
+      ...store.projects.map((p) => optionsFor(p.id)),
+    ],
+  );
+  app.addHook("onClose", async () => operations.close());
+  function invalidate() {
+    generation++;
+    inventories.clear();
+    pending.clear();
+  }
   const webDir =
     options.webDirectory ??
     join(dirname(fileURLToPath(import.meta.url)), "web");
@@ -75,24 +111,22 @@ export async function createServer(options: ServerOptions = {}) {
         : store.projects.find((p) => p.id === scopeId);
     if (scopeId !== "global" && !project)
       throw Object.assign(new Error("项目未登记。"), { code: "UNKNOWN_SCOPE" });
-    const action = scanSkills({
-      ...options,
-      home,
-      project: project?.path,
-      additionalRoots: project ? undefined : options.additionalRoots,
-    })
+    const started = generation;
+    const action = scanSkills(optionsFor(scopeId))
       .then((result) => {
-        inventories.set(scopeId, result);
+        if (generation === started) inventories.set(scopeId, result);
         return result;
       })
-      .finally(() => pending.delete(scopeId));
+      .finally(() => {
+        if (pending.get(scopeId) === action) pending.delete(scopeId);
+      });
     pending.set(scopeId, action);
     return action;
   }
   app.get(
     "/api/state",
     async (): Promise<AppState> => ({
-      version: "0.1.0",
+      version: "0.2.0",
       home,
       projects: store.projects,
       configIssue: store.issue,
@@ -162,6 +196,151 @@ export async function createServer(options: ServerOptions = {}) {
         return reply
           .code(409)
           .send({ error: "安装位置已变化或无法读取，请刷新列表。" });
+      }
+    },
+  );
+  const operationFailure = (error: unknown) => ({
+    error: error instanceof Error ? error.message : "操作失败，请刷新后重试。",
+  });
+  app.post("/api/install/sources", async (request, reply) => {
+    const body = request.body;
+    if (
+      !plainObject(body) ||
+      typeof body.source !== "string" ||
+      typeof body.scope !== "string" ||
+      (body.ref !== undefined && typeof body.ref !== "string")
+    )
+      return reply.code(400).send({ error: "请输入来源和安装范围。" });
+    try {
+      return await operations.resolve(
+        body.source,
+        body.ref as string | undefined,
+        body.scope,
+      );
+    } catch (error) {
+      return reply
+        .code(error instanceof OperationError ? error.status : 400)
+        .send(operationFailure(error));
+    }
+  });
+  app.delete<{ Params: { id: string } }>(
+    "/api/install/sources/:id",
+    async (request) => {
+      await operations.cancelSource(request.params.id);
+      return { ok: true };
+    },
+  );
+  app.post("/api/operations/install/preview", async (request, reply) => {
+    const body = request.body;
+    if (
+      !plainObject(body) ||
+      typeof body.catalogId !== "string" ||
+      typeof body.name !== "string" ||
+      !Array.isArray(body.tools) ||
+      body.tools.length > 3 ||
+      body.tools.some((t) => typeof t !== "string")
+    )
+      return reply.code(400).send({ error: "请选择 Skill 和目标工具。" });
+    try {
+      return await operations.previewInstall(
+        body.catalogId,
+        body.name,
+        body.tools as InstallTool[],
+      );
+    } catch (error) {
+      return reply
+        .code(error instanceof OperationError ? error.status : 400)
+        .send(operationFailure(error));
+    }
+  });
+  app.post("/api/operations/uninstall/preview", async (request, reply) => {
+    const body = request.body;
+    if (
+      !plainObject(body) ||
+      typeof body.scope !== "string" ||
+      typeof body.id !== "string" ||
+      (body.locations !== undefined &&
+        (!Array.isArray(body.locations) ||
+          body.locations.some((i) => typeof i !== "number")))
+    )
+      return reply.code(400).send({ error: "请选择有效的安装位置。" });
+    try {
+      return await operations.previewUninstall(
+        body.scope,
+        body.id,
+        body.locations as number[] | undefined,
+      );
+    } catch (error) {
+      return reply
+        .code(error instanceof OperationError ? error.status : 400)
+        .send(operationFailure(error));
+    }
+  });
+  app.post<{ Params: { id: string } }>(
+    "/api/operations/:id/apply",
+    async (request, reply) => {
+      try {
+        const result = await operations.apply(request.params.id);
+        invalidate();
+        return result;
+      } catch (error) {
+        invalidate();
+        return reply
+          .code(error instanceof OperationError ? error.status : 500)
+          .send(operationFailure(error));
+      }
+    },
+  );
+  app.delete<{ Params: { id: string } }>(
+    "/api/operations/:id",
+    async (request) => {
+      await operations.cancelPlan(request.params.id);
+      return { ok: true };
+    },
+  );
+  app.post<{ Params: { id: string } }>(
+    "/api/operations/:id/undo",
+    async (request, reply) => {
+      try {
+        await operations.undo(request.params.id);
+        invalidate();
+        return { ok: true };
+      } catch (error) {
+        invalidate();
+        return reply
+          .code(error instanceof OperationError ? error.status : 500)
+          .send(operationFailure(error));
+      }
+    },
+  );
+  app.post<{ Params: { id: string }; Querystring: { scope?: string } }>(
+    "/api/skills/:id/open",
+    async (request, reply) => {
+      try {
+        const item = await operations.current(
+          request.query.scope ?? "global",
+          request.params.id,
+        );
+        const body = request.body;
+        const index = plainObject(body) ? body.location : undefined;
+        if (
+          index !== undefined &&
+          (!Number.isInteger(index) || !item.locations[index as number])
+        )
+          return reply.code(400).send({ error: "安装位置不存在，请刷新。" });
+        const entry = item.locations[(index as number | undefined) ?? 0].path;
+        const path =
+          index === undefined && item.realPath
+            ? item.realPath
+            : await realpath(entry).catch(() => dirname(entry));
+        if (!(await stat(path)).isDirectory())
+          throw new OperationError("该位置不是可打开的目录。", 400);
+        await (options.openDirectory ?? openDirectory)(path);
+        return { ok: true };
+      } catch (error) {
+        return reply
+          .code(error instanceof OperationError ? error.status : 400)
+          .send(operationFailure(error));
       }
     },
   );

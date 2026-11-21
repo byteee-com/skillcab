@@ -10,8 +10,8 @@ import { createServer } from "./server/index.js";
 
 const program = new Command()
   .name("skills-console")
-  .description("全局与项目 Agent Skills 的本机只读盘点工具")
-  .version("0.1.0");
+  .description("全局与项目 Agent Skills 的本机管理工具")
+  .version("0.2.0");
 program
   .command("list")
   .description("扫描并列出实际安装，不修改 Skill 或 lock")
@@ -95,7 +95,7 @@ program
     const address = await app.listen({ host: "127.0.0.1", port });
     const url = `${address}/#token=${token}`;
     console.log(
-      `\n  Skills Console  v0.1.0\n  ${url}\n\n  只读扫描 · Ctrl+C 停止服务\n`,
+      `\n  Skills Console  v0.2.0\n  ${url}\n\n  扫描只读 · 安装和卸载先确认 · Ctrl+C 停止服务\n`,
     );
     if (options.open) {
       const [command, args] =

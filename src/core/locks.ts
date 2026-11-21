@@ -38,16 +38,18 @@ export interface LockData {
   entries: Map<string, Provenance>;
   diagnostics: Diagnostic[];
 }
+export function lockPathFor(scope: Scope, options: ScanOptions): string {
+  return scope.kind === "project"
+    ? join(scope.path, "skills-lock.json")
+    : options.xdgStateHome
+      ? join(options.xdgStateHome, "skills/.skill-lock.json")
+      : join(scope.path, ".agents/.skill-lock.json");
+}
 export async function readLock(
   scope: Scope,
   options: ScanOptions,
 ): Promise<LockData> {
-  const path =
-    scope.kind === "project"
-      ? join(scope.path, "skills-lock.json")
-      : options.xdgStateHome
-        ? join(options.xdgStateHome, "skills/.skill-lock.json")
-        : join(scope.path, ".agents/.skill-lock.json");
+  const path = lockPathFor(scope, options);
   const result: LockData = {
     path,
     schema: 0,

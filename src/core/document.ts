@@ -46,7 +46,7 @@ export async function readDocument(root: string) {
   let truncated = false;
   try {
     const path = await realpath(join(root, "SKILL.md"));
-    if (!inside(root, path))
+    if (!inside(await realpath(root), path))
       throw Object.assign(new Error("Document escapes skill directory"), {
         code: "OUTSIDE_ROOT",
       });

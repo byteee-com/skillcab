@@ -29,11 +29,18 @@ import {
   Search,
   ShieldCheck,
   TriangleAlert,
+  Trash2,
   X,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { api } from "./api.js";
+import {
+  InstallDialog,
+  UninstallDialog,
+  OperationNotice,
+} from "./OperationDialogs.js";
+import type { OperationResult } from "../core/operations.js";
 import type {
   AppState,
   Diagnostic,
@@ -93,6 +100,9 @@ function App() {
   const [descending, setDescending] = useState(false);
   const [selected, setSelected] = useState<Installation>();
   const [addingProject, setAddingProject] = useState(false);
+  const [installing, setInstalling] = useState(false);
+  const [uninstalling, setUninstalling] = useState<Installation>();
+  const [operation, setOperation] = useState<OperationResult>();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showScan, setShowScan] = useState(false);
   const [view, setView] = useState<"cards" | "list">(() =>
@@ -161,6 +171,7 @@ function App() {
         searchRef.current?.focus();
       }
       if (event.key === "Escape") {
+        if (document.querySelector("dialog[open]")) return;
         setSelected(undefined);
         setAddingProject(false);
         setSidebarOpen(false);
@@ -216,6 +227,14 @@ function App() {
     setIssuesOnly(false);
   };
 
+  function onApplied(result: OperationResult) {
+    setInstalling(false);
+    setUninstalling(undefined);
+    setSelected(undefined);
+    chooseScope(result.scopeId);
+    setRevision((v) => v + 1);
+    setOperation(result);
+  }
   return (
     <div className="app-shell">
       {sidebarOpen && (
@@ -231,7 +250,7 @@ function App() {
             <Layers3 size={19} strokeWidth={1.8} />
           </span>
           <div>
-            Skills Console<span>本机只读工作区</span>
+            Skills Console<span>本机 Skill 工作区</span>
           </div>
         </div>
         <button
@@ -281,10 +300,10 @@ function App() {
         </button>
         <div className="sidebar-bottom">
           <div className="local-status">
-            <i /> 本机运行 <span>v{state?.version ?? "0.1.0"}</span>
+            <i /> 本机运行 <span>v{state?.version ?? "0.2.0"}</span>
           </div>
           <div className="privacy-note">
-            <ShieldCheck size={13} /> 只读扫描，保留现有安装
+            <ShieldCheck size={13} /> 扫描只读，操作先确认
           </div>
         </div>
       </aside>
@@ -306,6 +325,14 @@ function App() {
             </div>
           </div>
           <button
+            className="primary-button install-button"
+            aria-label="安装 Skill"
+            onClick={() => setInstalling(true)}
+          >
+            <Plus size={14} />
+            <span className="hide-small">安装 Skill</span>
+          </button>
+          <button
             className="refresh-button"
             onClick={() => setRevision((value) => value + 1)}
             disabled={loading}
@@ -314,6 +341,17 @@ function App() {
             <span className="hide-small">扫描</span>
           </button>
         </header>
+        {operation && (
+          <OperationNotice
+            key={operation.id}
+            result={operation}
+            onUndo={() => {
+              setOperation(undefined);
+              setRevision((v) => v + 1);
+            }}
+            onDismiss={() => setOperation(undefined)}
+          />
+        )}
         <div className="inventory-summary" aria-label="盘点概览">
           <div className="stat">
             <span>安装总数</span>
@@ -563,10 +601,27 @@ function App() {
               item={selected}
               apiScope={selected.scope.kind === "global" ? "global" : scope}
               home={home}
+              onUninstall={() => setUninstalling(selected)}
               onClose={() => setSelected(undefined)}
             />
           </aside>
         </div>
+      )}
+      {installing && (
+        <InstallDialog
+          scopeId={scope}
+          projects={state?.projects ?? []}
+          onClose={() => setInstalling(false)}
+          onApplied={onApplied}
+        />
+      )}
+      {uninstalling && (
+        <UninstallDialog
+          item={uninstalling}
+          scopeId={uninstalling.scope.kind === "global" ? "global" : scope}
+          onClose={() => setUninstalling(undefined)}
+          onApplied={onApplied}
+        />
       )}
       {addingProject && (
         <AddProject
@@ -719,11 +774,13 @@ function Detail({
   item,
   apiScope,
   home,
+  onUninstall,
   onClose,
 }: {
   item: Installation;
   apiScope: string;
   home: string;
+  onUninstall: () => void;
   onClose: () => void;
 }) {
   const [detail, setDetail] = useState<SkillDetail>();
@@ -743,6 +800,22 @@ function Detail({
       });
     return () => controller.abort();
   }, [item.id, apiScope]);
+  const [opening, setOpening] = useState(false);
+  const [actionError, setActionError] = useState("");
+  async function openLocation(location?: number) {
+    setOpening(true);
+    setActionError("");
+    try {
+      await api(
+        `/skills/${item.id}/open?scope=${encodeURIComponent(apiScope)}`,
+        { method: "POST", body: JSON.stringify({ location }) },
+      );
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "无法打开目录。");
+    } finally {
+      setOpening(false);
+    }
+  }
   const p = item.provenance;
   return (
     <>
@@ -782,6 +855,41 @@ function Detail({
           {item.description ||
             "此 Skill 暂无有效描述。安装信息和原始文档仍可查看。"}
         </p>
+        <div className="detail-actions">
+          <button
+            className="secondary-button"
+            onClick={() => void openLocation()}
+            disabled={opening}
+          >
+            {opening ? (
+              <Loader2 size={14} className="spinning" />
+            ) : (
+              <FolderOpen size={14} />
+            )}
+            打开目录
+          </button>
+          <button
+            className="secondary-button danger-outline"
+            onClick={onUninstall}
+            disabled={
+              item.manager === "external" &&
+              item.locations.every((l) => l.kind === "directory")
+            }
+            title={
+              item.manager === "external"
+                ? "外部托管的源内容请使用原工具卸载"
+                : "选择要移除的安装位置"
+            }
+          >
+            <Trash2 size={14} />
+            卸载
+          </button>
+        </div>
+        {actionError && (
+          <div className="notice error-notice" role="alert">
+            {actionError}
+          </div>
+        )}
       </div>
       <div
         className="detail-tabs"
@@ -943,7 +1051,7 @@ function Detail({
             <div className="section-kicker">
               安装位置 <span>{item.locations.length} 个入口</span>
             </div>
-            {item.locations.map((location) => (
+            {item.locations.map((location, index) => (
               <div className="location-card" key={location.path}>
                 <div className="location-label">
                   <span>
@@ -964,6 +1072,15 @@ function Detail({
                 </div>
                 <div className="copy-line">
                   <code>{relativeHome(location.path, home)}</code>
+                  <button
+                    className="icon-button"
+                    aria-label={`打开安装目录 ${index + 1}`}
+                    title="打开此安装目录"
+                    disabled={opening}
+                    onClick={() => void openLocation(index)}
+                  >
+                    <FolderOpen size={13} />
+                  </button>
                   <CopyValue value={location.path} />
                 </div>
                 {location.linkTarget && (
