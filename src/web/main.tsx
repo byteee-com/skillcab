@@ -4,7 +4,6 @@ import {
   ArrowDownAZ,
   ArrowUpRight,
   Check,
-  CheckCircle2,
   ChevronRight,
   CircleHelp,
   Code2,
@@ -211,11 +210,8 @@ function App() {
             <Layers3 size={19} strokeWidth={1.8} />
           </span>
           <div>
-            Skills Console<span>LOCAL WORKSPACE</span>
+            Skills Console<span>本机只读工作区</span>
           </div>
-        </div>
-        <div className="nav-section-label">
-          工作区 <span>01</span>
         </div>
         <button
           className={`nav-item ${scope === "global" ? "active" : ""}`}
@@ -252,9 +248,7 @@ function App() {
           ))}
           {!state?.projects.length && (
             <div className="no-projects">
-              把项目加入工作区，
-              <br />
-              查看它自己的 Skills。
+              把项目加入工作区，查看它自己的 Skills。
             </div>
           )}
         </nav>
@@ -262,65 +256,51 @@ function App() {
           className="add-project-button"
           onClick={() => setAddingProject(true)}
         >
-          <Plus size={15} /> 添加项目
+          <Plus size={14} /> 添加项目
         </button>
         <div className="sidebar-bottom">
           <div className="local-status">
             <i /> 本机运行 <span>v{state?.version ?? "0.1.0"}</span>
           </div>
           <div className="privacy-note">
-            <ShieldCheck size={14} /> 只读扫描，保留现有安装
+            <ShieldCheck size={13} /> 只读扫描，保留现有安装
           </div>
         </div>
       </aside>
 
       <main className={`workspace ${selected ? "has-selection" : ""}`}>
-        <header className="workspace-bar">
-          <div className="breadcrumb">
-            <button
-              className="mobile-menu icon-button"
-              aria-label="打开导航"
-              onClick={() => setSidebarOpen(true)}
-            >
-              <PanelLeftClose size={18} />
-            </button>
-            <span>工作区</span>
-            <ChevronRight size={13} />
-            <span>{project?.name ?? "全局 Skills"}</span>
-          </div>
-          <span className="readonly-badge">
-            <ShieldCheck size={13} /> 只读模式
-          </span>
-        </header>
-        <section className="workspace-heading">
-          <div className="eyebrow">
-            SKILL INVENTORY{" "}
-            <span>/ {scope === "global" ? "GLOBAL" : "PROJECT"}</span>
-          </div>
-          <div className="title-line">
+        <header className="workspace-heading">
+          <button
+            className="mobile-menu icon-button"
+            aria-label="打开导航"
+            onClick={() => setSidebarOpen(true)}
+          >
+            <PanelLeftClose size={18} />
+          </button>
+          <div className="title-block">
             <h1>{project?.name ?? "全局 Skills"}</h1>
-            <button
-              className="refresh-button"
-              onClick={() => setRevision((value) => value + 1)}
-              disabled={loading}
-            >
-              <RefreshCw size={14} className={loading ? "spinning" : ""} /> 刷新
-              <span className="hide-small">扫描</span>
-            </button>
+            <div className="scope-path" title={project?.path ?? home}>
+              <FolderOpen size={12} />
+              <code>{relativeHome(project?.path ?? home, home)}</code>
+            </div>
           </div>
-          <p>
-            {scope === "global"
-              ? "看清本机的每一份 Skill，以及它们从哪里来。"
-              : "项目内安装与全局内容分开查看，保留各自的来源与位置。"}
-          </p>
-          <div className="scope-path">
-            <FolderOpen size={13} />
-            <code>{relativeHome(project?.path ?? home, home)}</code>
-          </div>
-        </section>
+          <button
+            className="refresh-button"
+            onClick={() => setRevision((value) => value + 1)}
+            disabled={loading}
+          >
+            <RefreshCw size={14} className={loading ? "spinning" : ""} /> 刷新
+            <span className="hide-small">扫描</span>
+          </button>
+        </header>
         <div className="inventory-summary" aria-label="盘点概览">
           <span>
-            <strong>{items.length}</strong> 份安装
+            <strong>
+              {filtered.length === items.length
+                ? items.length
+                : `${filtered.length} / ${items.length}`}
+            </strong>{" "}
+            份安装
           </span>
           <span>
             <i className="tiny-dot teal" />
@@ -359,16 +339,6 @@ function App() {
                 />
                 <kbd>/</kbd>
               </div>
-              <button
-                className="icon-button sort-button"
-                onClick={() => setDescending((v) => !v)}
-                title={descending ? "切换为名称升序" : "切换为名称降序"}
-                aria-label={descending ? "切换为名称升序" : "切换为名称降序"}
-              >
-                <ArrowDownAZ size={18} />
-              </button>
-            </div>
-            <div className="filter-toolbar">
               <label>
                 <span className="sr-only">按工具筛选</span>
                 <select value={tool} onChange={(e) => setTool(e.target.value)}>
@@ -394,7 +364,14 @@ function App() {
                   ))}
                 </select>
               </label>
-              <span className="result-count">{filtered.length} 个结果</span>
+              <button
+                className="icon-button sort-button"
+                onClick={() => setDescending((v) => !v)}
+                title={descending ? "切换为名称升序" : "切换为名称降序"}
+                aria-label={descending ? "切换为名称升序" : "切换为名称降序"}
+              >
+                <ArrowDownAZ size={16} />
+              </button>
             </div>
             {scope !== "global" && (
               <label className="global-toggle">
@@ -475,35 +452,31 @@ function App() {
                   )}
                 </div>
               ) : (
-                <>
-                  <div className="list-column-labels">
-                    <span>SKILL / 来源</span>
-                    <span>状态</span>
-                  </div>
-                  <ul className="skill-list">
-                    {filtered.map((item) => (
-                      <li key={item.id}>
-                        <button
-                          className={`skill-row ${selected?.id === item.id ? "selected" : ""}`}
-                          onClick={() => setSelected(item)}
-                          aria-pressed={selected?.id === item.id}
+                <ul className="skill-list">
+                  {filtered.map((item) => (
+                    <li key={item.id}>
+                      <button
+                        className={`skill-row ${selected?.id === item.id ? "selected" : ""}`}
+                        onClick={() => setSelected(item)}
+                        aria-pressed={selected?.id === item.id}
+                      >
+                        <span
+                          className={`skill-icon ${hasIssue(item) ? "has-issue" : ""}`}
                         >
-                          <span
-                            className={`skill-icon ${hasIssue(item) ? "has-issue" : ""}`}
-                          >
-                            <FileCode2 size={19} strokeWidth={1.6} />
-                          </span>
-                          <span className="skill-row-content">
+                          {hasIssue(item) ? (
+                            <TriangleAlert size={15} aria-label="需留意" />
+                          ) : (
+                            <FileCode2 size={15} strokeWidth={1.7} />
+                          )}
+                        </span>
+                        <span className="skill-row-content">
+                          <span className="skill-row-top">
                             <span className="skill-name">
                               {item.name}
                               {item.scope.kind === "global" &&
                                 scope !== "global" && (
                                   <span className="scope-tag">全局</span>
                                 )}
-                            </span>
-                            <span className="skill-description">
-                              {item.description ||
-                                "暂无描述 · 查看详情了解安装状态"}
                             </span>
                             <span className="skill-row-meta">
                               <span className={`manager-dot ${item.manager}`} />
@@ -516,23 +489,15 @@ function App() {
                               ].join(" / ")}
                             </span>
                           </span>
-                          <span className="row-state">
-                            {hasIssue(item) ? (
-                              <TriangleAlert
-                                size={14}
-                                className="amber-text"
-                                aria-label="需留意"
-                              />
-                            ) : (
-                              <CheckCircle2 size={14} aria-label="可读取" />
-                            )}
-                            <ChevronRight size={15} />
+                          <span className="skill-description">
+                            {item.description ||
+                              "暂无描述 · 查看详情了解安装状态"}
                           </span>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                </>
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
               )}
             </div>
             <div className="list-footer">
@@ -586,18 +551,10 @@ function App() {
             ) : (
               <div className="detail-placeholder">
                 <div className="placeholder-icon">
-                  <Code2 size={27} strokeWidth={1.3} />
+                  <Code2 size={22} strokeWidth={1.5} />
                 </div>
-                <h2>每份 Skill，都有迹可循。</h2>
-                <p>
-                  从左侧选择一项，查看文档、
-                  <br />
-                  安装位置与已有的版本记录。
-                </p>
-                <div className="placeholder-line" />
-                <span>
-                  <ShieldCheck size={13} /> 所有 Skill 目录保持只读
-                </span>
+                <h2>选择一个 Skill</h2>
+                <p>查看文档、安装位置与已有的版本记录。</p>
               </div>
             )}
           </aside>
@@ -699,17 +656,17 @@ function Detail({
   const p = item.provenance;
   return (
     <>
-      <div className="detail-topline">
-        <span>SKILL DETAILS</span>
-        <button className="icon-button" onClick={onClose} aria-label="关闭详情">
-          <X size={17} />
-        </button>
-      </div>
       <div className="detail-heading">
-        <div className="detail-symbol">
-          <FileCode2 size={25} strokeWidth={1.4} />
+        <div className="detail-title">
+          <h2>{item.name}</h2>
+          <button
+            className="icon-button"
+            onClick={onClose}
+            aria-label="关闭详情"
+          >
+            <X size={17} />
+          </button>
         </div>
-        <h2>{item.name}</h2>
         <div className="detail-badges">
           <span
             className={`badge ${item.manager === "skills-cli" ? "badge-teal" : ""}`}
