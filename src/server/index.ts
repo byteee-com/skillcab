@@ -1,5 +1,4 @@
 import Fastify from "fastify";
-import { randomBytes, timingSafeEqual } from "node:crypto";
 import { homedir } from "node:os";
 import { dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -12,14 +11,15 @@ import {
   OperationError,
   type InstallTool,
 } from "../core/operations.js";
+import { VersionService } from "../core/updates.js";
 import { openDirectory } from "./open-directory.js";
 import type { AppState, Inventory, ScanOptions } from "../core/types.js";
 
 export interface ServerOptions extends Omit<ScanOptions, "project"> {
   projects?: string[];
   configPath?: string;
-  token?: string;
   webDirectory?: string;
+  instanceId?: string;
   openDirectory?: (path: string) => Promise<void>;
 }
 const MIME: Record<string, string> = {
@@ -31,13 +31,16 @@ const MIME: Record<string, string> = {
 };
 export async function createServer(options: ServerOptions = {}) {
   const home = resolve(options.home ?? homedir());
-  const token = options.token ?? randomBytes(32).toString("hex");
   const app = Fastify({ logger: false, bodyLimit: 8192 });
   const store = new ProjectStore(
     options.configPath ?? join(home, ".config/skills-console/config.json"),
     home,
   );
   await store.load(options.projects);
+  const versions = new VersionService(
+    join(dirname(store.path), "versions.json"),
+    home,
+  );
   const inventories = new Map<string, Inventory>();
   const pending = new Map<string, Promise<Inventory>>();
   let generation = 0;
@@ -88,19 +91,12 @@ export async function createServer(options: ServerOptions = {}) {
       "Content-Security-Policy",
       "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
     );
-    if (request.url.startsWith("/api/")) {
-      const given =
-        request.headers.authorization?.replace(/^Bearer /, "") ?? "";
-      const supplied = Buffer.from(given);
-      const expected = Buffer.from(token);
-      if (
-        supplied.length !== expected.length ||
-        !timingSafeEqual(supplied, expected)
-      )
-        return reply
-          .code(401)
-          .send({ error: "会话已失效。请从终端重新打开启动链接。" });
-    }
+    if (
+      request.url.startsWith("/api/") &&
+      !["GET", "HEAD", "OPTIONS"].includes(request.method) &&
+      request.headers["x-skills-console"] !== "1"
+    )
+      return reply.code(403).send({ error: "操作须从本地控制台发起。" });
   });
   async function inventory(scopeId: string): Promise<Inventory> {
     const existing = pending.get(scopeId);
@@ -113,6 +109,7 @@ export async function createServer(options: ServerOptions = {}) {
       throw Object.assign(new Error("项目未登记。"), { code: "UNKNOWN_SCOPE" });
     const started = generation;
     const action = scanSkills(optionsFor(scopeId))
+      .then((result) => versions.decorate(result))
       .then((result) => {
         if (generation === started) inventories.set(scopeId, result);
         return result;
@@ -123,10 +120,16 @@ export async function createServer(options: ServerOptions = {}) {
     pending.set(scopeId, action);
     return action;
   }
+  app.get("/api/health", async () => ({
+    app: "skills-console",
+    version: "0.3.0",
+    pid: process.pid,
+    instanceId: options.instanceId,
+  }));
   app.get(
     "/api/state",
     async (): Promise<AppState> => ({
-      version: "0.2.0",
+      version: "0.3.0",
       home,
       projects: store.projects,
       configIssue: store.issue,
@@ -202,6 +205,97 @@ export async function createServer(options: ServerOptions = {}) {
   const operationFailure = (error: unknown) => ({
     error: error instanceof Error ? error.message : "操作失败，请刷新后重试。",
   });
+  app.post<{ Querystring: { scope?: string } }>(
+    "/api/updates/check",
+    async (request, reply) => {
+      try {
+        const data = await inventory(request.query.scope ?? "global");
+        await versions.check(data);
+        invalidate();
+        return await inventory(request.query.scope ?? "global");
+      } catch (error) {
+        return reply.code(400).send(operationFailure(error));
+      }
+    },
+  );
+  app.post<{ Params: { id: string }; Querystring: { scope?: string } }>(
+    "/api/skills/:id/check",
+    async (request, reply) => {
+      try {
+        const data = await inventory(request.query.scope ?? "global");
+        if (!data.installations.some((i) => i.id === request.params.id))
+          return reply.code(404).send({ error: "Skill 已不在列表中。" });
+        await versions.check({
+          ...data,
+          installations: data.installations.filter(
+            (i) => i.id === request.params.id,
+          ),
+        });
+        invalidate();
+        return (
+          await inventory(request.query.scope ?? "global")
+        ).installations.find((i) => i.id === request.params.id);
+      } catch (error) {
+        return reply.code(400).send(operationFailure(error));
+      }
+    },
+  );
+  app.put<{ Params: { id: string }; Querystring: { scope?: string } }>(
+    "/api/skills/:id/source",
+    async (request, reply) => {
+      const body = request.body;
+      if (
+        !plainObject(body) ||
+        typeof body.source !== "string" ||
+        (body.ref !== undefined && typeof body.ref !== "string") ||
+        (body.skillPath !== undefined &&
+          (typeof body.skillPath !== "string" || body.skillPath.length > 2048))
+      )
+        return reply
+          .code(400)
+          .send({ error: "请输入有效的来源地址、跟踪目标和子目录。" });
+      try {
+        const item = await operations.current(
+          request.query.scope ?? "global",
+          request.params.id,
+        );
+        if (item.provenance)
+          return reply
+            .code(409)
+            .send({ error: "此安装已有 CLI 来源记录，不能用手动来源覆盖。" });
+        await versions.register(
+          item,
+          body.source,
+          body.ref as string | undefined,
+          body.skillPath as string | undefined,
+        );
+        invalidate();
+        return (
+          await inventory(request.query.scope ?? "global")
+        ).installations.find((i) => i.id === request.params.id);
+      } catch (error) {
+        return reply.code(400).send(operationFailure(error));
+      }
+    },
+  );
+  app.delete<{ Params: { id: string }; Querystring: { scope?: string } }>(
+    "/api/skills/:id/source",
+    async (request, reply) => {
+      try {
+        const item = await operations.current(
+          request.query.scope ?? "global",
+          request.params.id,
+        );
+        await versions.remove(item);
+        invalidate();
+        return (
+          await inventory(request.query.scope ?? "global")
+        ).installations.find((i) => i.id === request.params.id);
+      } catch (error) {
+        return reply.code(400).send(operationFailure(error));
+      }
+    },
+  );
   app.post("/api/install/sources", async (request, reply) => {
     const body = request.body;
     if (
@@ -367,5 +461,5 @@ export async function createServer(options: ServerOptions = {}) {
       return reply.code(404).send();
     }
   });
-  return { app, token, store };
+  return { app, store };
 }

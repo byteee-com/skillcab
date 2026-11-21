@@ -1895,3 +1895,110 @@ h1 {
     transition: none !important;
   }
 }
+
+/* Version evidence and source tracking use the existing dark workspace palette. */
+.inventory-summary {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+.skill-version-line {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: var(--text-3);
+  font-size: 11px;
+  line-height: 1.5;
+}
+.skill-card .skill-version-line {
+  margin-top: auto;
+  padding-top: 10px;
+}
+.update-badge {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 2px 6px;
+  font-size: 10px;
+  line-height: 1.5;
+  color: var(--text-3);
+  white-space: normal;
+}
+.update-available {
+  color: #dbe893;
+  background: #c8e77a14;
+  border-color: #c8e77a40;
+}
+.update-current {
+  color: #9ecea3;
+  background: #9ecea30a;
+}
+.update-error {
+  color: #f0b48a;
+  border-color: #f0b48a40;
+}
+.skill-row-meta .source-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.tool-logos {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+.tool-logo {
+  display: inline-flex;
+  flex: 0 0 18px;
+  width: 18px;
+  height: 18px;
+  align-items: center;
+  justify-content: center;
+  color: #a1a69b;
+}
+.tool-logo img {
+  width: 17px;
+  height: 17px;
+  object-fit: contain;
+  filter: brightness(0) invert(0.8);
+}
+.tool-claude-code img {
+  filter: brightness(0) saturate(100%) invert(74%) sepia(20%) saturate(867%)
+    hue-rotate(328deg) brightness(90%);
+}
+.version-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 16px 0;
+}
+.version-actions .secondary-button {
+  font-size: 11px;
+  padding: 7px 9px;
+}
+.location-tool {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.skill-row .skill-row-top {
+  flex-wrap: wrap;
+}
+@media (max-width: 600px) {
+  .inventory-summary {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .check-updates-button {
+    padding: 8px;
+    font-size: 11px;
+  }
+  .workspace-heading {
+    flex-wrap: wrap;
+  }
+  .skill-row .skill-version-line {
+    width: 100%;
+  }
+}

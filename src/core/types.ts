@@ -53,8 +53,36 @@ export interface Installation {
   locations: Location[];
   manager: Manager;
   provenance?: Provenance;
+  tracking?: SourceTracking;
+  update?: UpdateCheck;
   diagnostics: Diagnostic[];
   documentState: "valid" | "invalid" | "missing" | "unreadable";
+}
+export interface SourceTracking {
+  source: string;
+  sourceUrl: string;
+  sourceType: string;
+  ref?: string;
+  skillPath: string;
+  originalName: string;
+  registeredAt: string;
+  baseline?: { hash: string; commit?: string };
+}
+export interface UpdateCheck {
+  status:
+    | "available"
+    | "current"
+    | "unknown"
+    | "error"
+    | "untracked"
+    | "unchecked"
+    | "unsupported";
+  message: string;
+  checkedAt?: string;
+  upstreamCommit?: string;
+  upstreamVersion?: string;
+  upstreamRef?: string;
+  localState?: "clean" | "modified" | "unknown";
 }
 export interface Inventory {
   scope: Scope;

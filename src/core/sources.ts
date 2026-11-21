@@ -25,6 +25,16 @@ const skip = new Set([
   "metadata.json",
   ".DS_Store",
 ]);
+export function excludedFromHash(
+  name: string,
+  directory: boolean,
+  schema: number,
+): boolean {
+  return schema === 1
+    ? directory && [".git", "node_modules"].includes(name)
+    : name === "metadata.json" ||
+        (directory && [".git", "__pycache__", "__pypackages__"].includes(name));
+}
 export const safeName = (name: string) =>
   /^[a-z0-9][a-z0-9._-]{0,99}$/.test(name);
 export interface SourceCandidate {
@@ -233,6 +243,7 @@ export async function resolveSkillsSource(
 export async function stageSkill(
   source: string,
   target: string,
+  hashSchema?: number,
 ): Promise<void> {
   let bytes = 0,
     entries = 0;
@@ -244,8 +255,13 @@ export async function stageSkill(
       throw new Error("Skill 内包含软链接，请先整理为独立文件再安装。");
     if (info.isDirectory()) {
       await mkdir(to);
-      for (const entry of await readdir(from))
-        if (!skip.has(entry)) await copy(join(from, entry), join(to, entry));
+      for (const entry of await readdir(from, { withFileTypes: true })) {
+        const excluded =
+          hashSchema === undefined
+            ? skip.has(entry.name)
+            : excludedFromHash(entry.name, entry.isDirectory(), hashSchema);
+        if (!excluded) await copy(join(from, entry.name), join(to, entry.name));
+      }
     } else if (info.isFile()) {
       bytes += info.size;
       if (bytes > 20 * 1024 * 1024)
@@ -264,7 +280,7 @@ export async function contentHash(
   const files: { path: string; bytes: Buffer }[] = [];
   async function collect(dir: string) {
     for (const entry of await readdir(dir, { withFileTypes: true })) {
-      if (skip.has(entry.name)) continue;
+      if (excludedFromHash(entry.name, entry.isDirectory(), schema)) continue;
       const path = join(dir, entry.name);
       if (entry.isDirectory()) await collect(path);
       else if (entry.isFile())

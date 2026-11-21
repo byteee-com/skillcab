@@ -2,8 +2,16 @@
 import { Command } from "commander";
 import { spawn } from "node:child_process";
 import { homedir } from "node:os";
-import { resolve } from "node:path";
-import { stat } from "node:fs/promises";
+import { resolve, join, dirname } from "node:path";
+import { stat, writeFile, readFile, rm, mkdir } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { VersionService } from "./core/updates.js";
+import {
+  startBackground,
+  runningService,
+  stopService,
+  servicePath,
+} from "./server/service.js";
 import { scanSkills } from "./core/scanner.js";
 import { toolNames } from "./core/paths.js";
 import { createServer } from "./server/index.js";
@@ -11,7 +19,7 @@ import { createServer } from "./server/index.js";
 const program = new Command()
   .name("skills-console")
   .description("全局与项目 Agent Skills 的本机管理工具")
-  .version("0.2.0");
+  .version("0.3.0");
 program
   .command("list")
   .description("扫描并列出实际安装，不修改 Skill 或 lock")
@@ -20,6 +28,7 @@ program
   .option("--home <path>", "指定用户目录，用于隔离扫描", homedir())
   .option("--root <path...>", "额外扫描目录")
   .option("--json", "输出完整 JSON")
+  .option("--config <path>", "指定本工具配置文件，读取来源和检查缓存")
   .action(async (options) => {
     if (options.global && options.project)
       throw new Error("--global 与 --project 不可同时使用。");
@@ -37,6 +46,13 @@ program
         tool: "custom" as const,
       })),
     });
+    const config = options.config
+      ? resolve(options.config)
+      : join(home, ".config/skills-console/config.json");
+    await new VersionService(
+      join(dirname(config), "versions.json"),
+      home,
+    ).decorate(result);
     if (options.json)
       process.stdout.write(JSON.stringify(result, null, 2) + "\n");
     else {
@@ -51,11 +67,16 @@ program
           ].join(", "),
           Source:
             item.provenance?.source ??
+            item.tracking?.source ??
             (item.manager === "external" ? "外部管理" : "本地内容"),
           Version:
             item.declaredVersion ??
             item.provenance?.commit?.slice(0, 8) ??
+            item.tracking?.baseline?.commit?.slice(0, 8) ??
+            item.provenance?.hash?.value.slice(0, 8) ??
+            item.tracking?.baseline?.hash.slice(0, 8) ??
             "未知",
+          Update: item.update?.status,
           Status: item.diagnostics.length ? "需留意" : "可读取",
         })),
       );
@@ -72,8 +93,9 @@ program
   .option("--home <path>", "指定用户目录，用于隔离扫描", homedir())
   .option("--config <path>", "指定本工具项目配置文件")
   .option("--root <path...>", "额外的全局扫描目录")
-  .option("--port <number>", "指定端口；默认使用随机空闲端口", "0")
+  .option("--port <number>", "指定端口；默认 59726（0 使用随机端口）", "59726")
   .option("--no-open", "不自动打开浏览器")
+  .option("--foreground", "在前台运行；Ctrl+C 停止")
   .action(async (options) => {
     const port = Number(options.port);
     if (!Number.isInteger(port) || port < 0 || port > 65535)
@@ -81,22 +103,83 @@ program
     const home = resolve(options.home);
     const projects =
       options.project ?? (process.cwd() !== home ? [process.cwd()] : []);
-    const { app, token } = await createServer({
-      home,
-      projects,
-      configPath: options.config ? resolve(options.config) : undefined,
-      codexHome: home === homedir() ? process.env.CODEX_HOME : undefined,
-      xdgStateHome: home === homedir() ? process.env.XDG_STATE_HOME : undefined,
-      additionalRoots: options.root?.map((path: string) => ({
-        path,
-        tool: "custom" as const,
-      })),
-    });
-    const address = await app.listen({ host: "127.0.0.1", port });
-    const url = `${address}/#token=${token}`;
-    console.log(
-      `\n  Skills Console  v0.2.0\n  ${url}\n\n  扫描只读 · 安装和卸载先确认 · Ctrl+C 停止服务\n`,
-    );
+    const configPath = options.config
+      ? resolve(options.config)
+      : join(home, ".config/skills-console/config.json");
+    let url: string;
+    if (!options.foreground) {
+      const args = [
+        "--home",
+        home,
+        "--config",
+        configPath,
+        "--port",
+        String(port),
+      ];
+      if (projects.length) args.push("--project", ...projects);
+      if (options.root?.length) args.push("--root", ...options.root);
+      const { record, reused } = await startBackground(configPath, args);
+      url = record.url;
+      for (const path of projects) {
+        const response = await fetch(`${url}api/projects`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Skills-Console": "1",
+          },
+          body: JSON.stringify({ path: resolve(path) }),
+        });
+        if (!response.ok)
+          console.error(
+            "项目登记失败：",
+            ((await response.json()) as { error: string }).error,
+          );
+      }
+      console.log(
+        `\n  Skills Console  v0.3.0\n  ${url}\n\n  ${reused ? "已连接现有" : "已启动"}后台服务 · 关闭终端后继续运行\n  skills-console stop 停止 · skills-console status 查看状态\n`,
+      );
+      if (reused && options.root?.length)
+        console.log("已有服务的扫描根目录保持原配置；修改 --root 请先 stop。 ");
+    } else {
+      const instanceId = randomUUID();
+      const { app } = await createServer({
+        home,
+        projects,
+        configPath,
+        instanceId,
+        codexHome: home === homedir() ? process.env.CODEX_HOME : undefined,
+        xdgStateHome:
+          home === homedir() ? process.env.XDG_STATE_HOME : undefined,
+        additionalRoots: options.root?.map((path: string) => ({
+          path,
+          tool: "custom" as const,
+        })),
+      });
+      url = `${await app.listen({ host: "127.0.0.1", port })}/`;
+      if (process.env.SKILLS_CONSOLE_BACKGROUND === "1") {
+        await mkdir(dirname(configPath), { recursive: true, mode: 0o700 });
+        await writeFile(
+          servicePath(configPath),
+          JSON.stringify({ version: 1, pid: process.pid, url, instanceId }),
+          { mode: 0o600 },
+        );
+      }
+      console.log(
+        `\n  Skills Console  v0.3.0\n  ${url}\n\n  扫描只读 · 操作先确认 · Ctrl+C 停止前台服务\n`,
+      );
+      const shutdown = () => {
+        void app.close().then(async () => {
+          const record = JSON.parse(
+            await readFile(servicePath(configPath), "utf8").catch(() => "{}"),
+          );
+          if (record.instanceId === instanceId)
+            await rm(servicePath(configPath), { force: true });
+          process.exit(0);
+        });
+      };
+      process.once("SIGINT", shutdown);
+      process.once("SIGTERM", shutdown);
+    }
     if (options.open) {
       const [command, args] =
         process.platform === "darwin"
@@ -110,11 +193,65 @@ program
         )
         .unref();
     }
-    const shutdown = () => {
-      void app.close().then(() => process.exit(0));
-    };
-    process.once("SIGINT", shutdown);
-    process.once("SIGTERM", shutdown);
+  });
+for (const command of ["status", "stop"] as const) {
+  program
+    .command(command)
+    .description(command === "status" ? "查看后台服务状态" : "停止后台服务")
+    .option("--home <path>", "用户目录", homedir())
+    .option("--config <path>", "配置文件位置")
+    .action(async (options) => {
+      const config = options.config
+        ? resolve(options.config)
+        : join(resolve(options.home), ".config/skills-console/config.json");
+      if (command === "stop")
+        console.log(
+          (await stopService(config))
+            ? "后台服务已停止。"
+            : "没有正在运行的后台服务。",
+        );
+      else {
+        const running = await runningService(config);
+        console.log(
+          running
+            ? `后台服务运行中 · PID ${running.pid}\n${running.url}`
+            : "没有正在运行的后台服务。",
+        );
+      }
+    });
+}
+program
+  .command("check")
+  .description("只读检查指定范围内 Skill 的来源更新")
+  .option("--home <path>", "用户目录", homedir())
+  .option("-p, --project <path>", "项目目录")
+  .option("--config <path>", "配置文件位置")
+  .option("--json", "输出 JSON")
+  .action(async (options) => {
+    const home = resolve(options.home);
+    const config = options.config
+      ? resolve(options.config)
+      : join(home, ".config/skills-console/config.json");
+    const versions = new VersionService(
+      join(dirname(config), "versions.json"),
+      home,
+    );
+    const inventory = await scanSkills({
+      home,
+      project: options.project ? resolve(options.project) : undefined,
+      codexHome: home === homedir() ? process.env.CODEX_HOME : undefined,
+      xdgStateHome: home === homedir() ? process.env.XDG_STATE_HOME : undefined,
+    });
+    await versions.check(inventory);
+    if (options.json) console.log(JSON.stringify(inventory, null, 2));
+    else
+      console.table(
+        inventory.installations.map((item) => ({
+          Skill: item.name,
+          Status: item.update?.status,
+          Message: item.update?.message,
+        })),
+      );
   });
 program.parseAsync().catch((error) => {
   console.error(error instanceof Error ? error.message : "命令执行失败。");

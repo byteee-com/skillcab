@@ -240,7 +240,6 @@ it("authenticates mutation routes and opens only a freshly scanned directory", a
   await symlink(source, join(home, ".agents/skills/linked"), "dir");
   const { app } = await createServer({
     home,
-    token: "testing-operations",
     configPath: join(fixture, "config.json"),
     openDirectory: async (path) => {
       opened.push(path);
@@ -255,10 +254,10 @@ it("authenticates mutation routes and opens only a freshly scanned directory", a
           headers: { host: "127.0.0.1" },
         })
       ).statusCode,
-    ).toBe(401);
+    ).toBe(403);
     const headers = {
       host: "127.0.0.1",
-      authorization: "Bearer testing-operations",
+      "x-skills-console": "1",
     };
     const id = (await scanSkills(options())).installations[0].id;
     expect(

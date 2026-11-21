@@ -1,11 +1,7 @@
-const fragment = new URLSearchParams(window.location.hash.slice(1));
-const incoming = fragment.get("token");
-if (incoming) {
-  sessionStorage.setItem("skills-console-session", incoming);
+// Remove stale credentials and fragments from versions before 0.3.
+if (new URLSearchParams(window.location.hash.slice(1)).has("token"))
   history.replaceState(null, "", window.location.pathname);
-}
-const token =
-  incoming ?? sessionStorage.getItem("skills-console-session") ?? "";
+sessionStorage.removeItem("skills-console-session");
 
 export async function api<T>(
   path: string,
@@ -14,7 +10,7 @@ export async function api<T>(
   const response = await fetch(`/api${path}`, {
     ...options,
     headers: {
-      Authorization: `Bearer ${token}`,
+      "X-Skills-Console": "1",
       ...(options.body ? { "Content-Type": "application/json" } : {}),
       ...options.headers,
     },

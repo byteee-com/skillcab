@@ -99,9 +99,11 @@ export async function readLock(
           ? {
               algorithm:
                 scope.kind === "global"
-                  ? entry.sourceType === "github"
-                    ? "git-tree"
-                    : "upstream-folder-hash"
+                  ? entry.skillFolderHashAlgorithm === "skills-content-v2"
+                    ? "skills-content-v2"
+                    : entry.sourceType === "github"
+                      ? "git-tree"
+                      : "upstream-folder-hash"
                   : `skills-content-v${schema}`,
               value: hash,
             }

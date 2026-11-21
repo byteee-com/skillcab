@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 
 test("installs to a project, opens its directory, uninstalls and restores it", async ({
   page,
@@ -7,7 +7,7 @@ test("installs to a project, opens its directory, uninstalls and restores it", a
   const fixture = JSON.parse(
     await readFile(".local/e2e-state.json", "utf8"),
   ) as { installSource: string; openLog: string; project: string };
-  await page.goto("/#token=browser-test-session");
+  await page.goto("/");
   await page.getByRole("button", { name: "安装 Skill", exact: true }).click();
   const dialog = page.getByRole("dialog");
   await dialog.getByLabel("安装范围").selectOption({ label: "sample-project" });
@@ -51,7 +51,12 @@ test("installs to a project, opens its directory, uninstalls and restores it", a
   await page.getByRole("button", { name: /installed-reader/ }).click();
   await page.getByRole("button", { name: "打开目录", exact: true }).click();
   await expect
-    .poll(async () => JSON.parse(await readFile(fixture.openLog, "utf8")).path)
+    .poll(
+      async () =>
+        JSON.parse(
+          await readFile(fixture.openLog, "utf8").catch(() => '{"path":""}'),
+        ).path,
+    )
     .toBe(`${fixture.project}/.agents/skills/installed-reader`);
   await page.getByRole("button", { name: "卸载", exact: true }).click();
   await dialog.getByRole("button", { name: "预览卸载", exact: true }).click();
@@ -86,7 +91,7 @@ test("desktop inventory, safe documents, source details, search and project regi
       remoteRequests.push(request.url());
   });
   await page.setViewportSize({ width: 1440, height: 960 });
-  await page.goto("/#token=browser-test-session");
+  await page.goto("/");
   await expect(
     page.getByRole("button", { name: /repository-map/ }),
   ).toBeVisible();
@@ -105,8 +110,12 @@ test("desktop inventory, safe documents, source details, search and project regi
     "aria-selected",
     "true",
   );
-  await expect(page.getByText("example/skills", { exact: true })).toBeVisible();
-  await expect(page.getByText("未检查", { exact: true })).toBeVisible();
+  await expect(
+    page.locator(".detail-scroll").getByText("example/skills", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.locator(".metadata-list").getByText("未检查", { exact: true }),
+  ).toBeVisible();
   await page.getByRole("tab", { name: /^文件/ }).click();
   await expect(page.locator(".file-list").getByText("SKILL.md")).toBeVisible();
   await page.getByRole("button", { name: "关闭详情" }).click();
@@ -166,7 +175,7 @@ test("mobile navigation, project-only list and detail close", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto("/#token=browser-test-session");
+  await page.goto("/");
   await expect(
     page.getByRole("button", { name: /repository-map/ }),
   ).toBeVisible();
@@ -186,4 +195,75 @@ test("mobile navigation, project-only list and detail close", async ({
   await expect(
     page.getByRole("button", { name: /project-reader/ }),
   ).toBeVisible();
+});
+
+test("records manual sources, checks versions, shows logos and persists results without a token", async ({
+  page,
+}) => {
+  const fixture = JSON.parse(
+    await readFile(".local/e2e-state.json", "utf8"),
+  ) as { home: string; manualSource: string };
+  await page.goto("/");
+  await page.getByRole("button", { name: /local-notes/ }).click();
+  await page.getByRole("tab", { name: "安装与来源" }).click();
+  await page.getByRole("button", { name: "补录来源", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByLabel("来源地址").fill(fixture.manualSource);
+  await dialog.getByRole("button", { name: "核验并保存", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await page.getByRole("button", { name: "检查此 Skill", exact: true }).click();
+  await expect(
+    page.locator(".metadata-list").getByText("已是最新", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page
+      .locator(".detail-scroll")
+      .getByText("关联时内容核验一致", { exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "关闭详情" }).click();
+  const card = page.getByRole("button", { name: /local-notes/ });
+  await expect(card.locator(".update-current")).toHaveText("已是最新");
+  await expect(
+    card.getByRole("img", { name: "Codex", exact: true }),
+  ).toBeVisible();
+  await page.reload();
+  await expect(card.locator(".update-current")).toHaveText("已是最新");
+  const sourceDoc = `${fixture.manualSource}/SKILL.md`;
+  await writeFile(
+    sourceDoc,
+    (await readFile(sourceDoc, "utf8")).replace("1.0.0", "2.0.0"),
+  );
+  await card.click();
+  await page.getByRole("tab", { name: "安装与来源" }).click();
+  await page.getByRole("button", { name: "检查此 Skill", exact: true }).click();
+  await expect(
+    page.locator(".metadata-list").getByText("有更新", { exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "关闭详情" }).click();
+  await expect(card.locator(".update-available")).toHaveText("有更新");
+  await page.getByRole("button", { name: "只看有更新", exact: true }).click();
+  await expect(page.locator(".skill-list > li")).toHaveCount(1);
+  await page.getByRole("button", { name: "只看有更新", exact: true }).click();
+  await page.screenshot({
+    path: ".local/version-list-desktop.png",
+    fullPage: true,
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+  await page.getByRole("button", { name: /local-notes/ }).click();
+  await page.getByRole("tab", { name: "安装与来源" }).click();
+  await page.getByRole("button", { name: "编辑来源", exact: true }).click();
+  await expect(
+    dialog.getByRole("heading", { name: "编辑来源" }),
+  ).toBeInViewport();
+  await page.screenshot({ path: ".local/source-dialog-mobile.png" });
+  expect(await dialog.evaluate((e) => e.scrollWidth <= e.clientWidth)).toBe(
+    true,
+  );
+  await dialog.getByRole("button", { name: "移除关联", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
 });

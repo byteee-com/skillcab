@@ -1,6 +1,6 @@
 {
   "name": "skills-console",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "A local console for discovering, installing and managing global and project Agent Skills",
   "type": "module",
   "license": "MIT",

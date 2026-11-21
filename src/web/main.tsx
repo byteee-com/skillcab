@@ -34,6 +34,8 @@ import {
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { ToolLogo } from "./ToolLogos.js";
+import { UpdateBadge, SourceDialog, versionLabel } from "./VersionUI.js";
 import { api } from "./api.js";
 import {
   InstallDialog,
@@ -71,10 +73,8 @@ const relativeHome = (path: string, home: string) =>
       ? `~${path.slice(home.length)}`
       : path;
 const sourceName = (item: Installation) =>
-  item.provenance?.source ?? MANAGERS[item.manager];
+  item.provenance?.source ?? item.tracking?.source ?? MANAGERS[item.manager];
 const hasIssue = (item: Installation) => item.diagnostics.length > 0;
-const toolNames = (item: Installation) =>
-  [...new Set(item.locations.map((l) => TOOLS[l.tool]))].join(" / ");
 const hue = (name: string) =>
   [...name].reduce((sum, char) => (sum * 31 + char.charCodeAt(0)) % 360, 7);
 const monogram = (name: string) =>
@@ -95,6 +95,9 @@ function App() {
   const [search, setSearch] = useState("");
   const [tool, setTool] = useState("all");
   const [manager, setManager] = useState("all");
+  const [updatesOnly, setUpdatesOnly] = useState(false);
+  const [checking, setChecking] = useState(false);
+  const [checkError, setCheckError] = useState("");
   const [issuesOnly, setIssuesOnly] = useState(false);
   const [includeGlobal, setIncludeGlobal] = useState(false);
   const [descending, setDescending] = useState(false);
@@ -205,10 +208,11 @@ function App() {
                   ["codex", "cursor"].includes(tool)),
             )) &&
           (manager === "all" || item.manager === manager) &&
-          (!issuesOnly || hasIssue(item)),
+          (!issuesOnly || hasIssue(item)) &&
+          (!updatesOnly || item.update?.status === "available"),
       )
       .sort((a, b) => (descending ? -1 : 1) * a.name.localeCompare(b.name));
-  }, [items, search, tool, manager, issuesOnly, descending]);
+  }, [items, search, tool, manager, issuesOnly, updatesOnly, descending]);
   const issueCount = items.filter(hasIssue).length;
   function chooseScope(id: string) {
     setScope(id);
@@ -216,6 +220,7 @@ function App() {
     setTool("all");
     setManager("all");
     setIssuesOnly(false);
+    setUpdatesOnly(false);
     setIncludeGlobal(false);
     setSidebarOpen(false);
     setShowScan(false);
@@ -225,8 +230,44 @@ function App() {
     setTool("all");
     setManager("all");
     setIssuesOnly(false);
+    setUpdatesOnly(false);
   };
 
+  function replaceUpdated(updated: Installation) {
+    const replace = (value: Inventory | undefined) =>
+      value
+        ? {
+            ...value,
+            installations: value.installations.map((i) =>
+              i.id === updated.id ? updated : i,
+            ),
+          }
+        : value;
+    setInventory(replace);
+    setGlobalInventory(replace);
+    setSelected((current) => (current?.id === updated.id ? updated : current));
+  }
+  async function checkUpdates() {
+    setChecking(true);
+    setCheckError("");
+    try {
+      const result = await api<Inventory>(
+        `/updates/check?scope=${encodeURIComponent(scope)}`,
+        { method: "POST" },
+      );
+      setInventory(result);
+      if (includeGlobal && scope !== "global")
+        setGlobalInventory(
+          await api<Inventory>("/updates/check?scope=global", {
+            method: "POST",
+          }),
+        );
+    } catch (error) {
+      setCheckError((error as Error).message);
+    } finally {
+      setChecking(false);
+    }
+  }
   function onApplied(result: OperationResult) {
     setInstalling(false);
     setUninstalling(undefined);
@@ -333,6 +374,14 @@ function App() {
             <span className="hide-small">安装 Skill</span>
           </button>
           <button
+            className="secondary-button check-updates-button"
+            onClick={() => void checkUpdates()}
+            disabled={loading || checking}
+          >
+            <RefreshCw size={14} className={checking ? "spinning" : ""} />
+            <span>{checking ? "检查中…" : "检查更新"}</span>
+          </button>
+          <button
             className="refresh-button"
             onClick={() => setRevision((value) => value + 1)}
             disabled={loading}
@@ -341,6 +390,11 @@ function App() {
             <span className="hide-small">扫描</span>
           </button>
         </header>
+        {checkError && (
+          <div className="notice error-notice" role="alert">
+            {checkError}
+          </div>
+        )}
         {operation && (
           <OperationNotice
             key={operation.id}
@@ -384,6 +438,19 @@ function App() {
               <TriangleAlert size={12} /> 需留意
             </span>
             <strong>{issueCount}</strong>
+          </button>
+          <button
+            className={`stat ${updatesOnly ? "summary-active" : ""}`}
+            onClick={() => setUpdatesOnly((v) => !v)}
+            aria-pressed={updatesOnly}
+            aria-label="只看有更新"
+          >
+            <span>
+              <RefreshCw size={12} /> 有更新
+            </span>
+            <strong>
+              {items.filter((i) => i.update?.status === "available").length}
+            </strong>
           </button>
         </div>
         <div className="inventory-body">
@@ -601,6 +668,7 @@ function App() {
               item={selected}
               apiScope={selected.scope.kind === "global" ? "global" : scope}
               home={home}
+              onUpdated={replaceUpdated}
               onUninstall={() => setUninstalling(selected)}
               onClose={() => setSelected(undefined)}
             />
@@ -675,9 +743,12 @@ function SkillItem({
   const meta = (
     <span className="skill-row-meta">
       <span className={`manager-dot ${item.manager}`} />
-      {sourceName(item)}
-      <span className="meta-separator">·</span>
-      {toolNames(item)}
+      <span className="source-label">{sourceName(item)}</span>
+      <span className="tool-logos">
+        {[...new Set(item.locations.map((l) => l.tool))].map((t) => (
+          <ToolLogo key={t} tool={t} />
+        ))}
+      </span>
     </span>
   );
   const description = (
@@ -704,6 +775,12 @@ function SkillItem({
             )}
           </span>
           {description}
+          <span className="skill-version-line">
+            <span title="作者声明版本、锁记录提交或关联时核验提交">
+              {versionLabel(item)}
+            </span>
+            <UpdateBadge item={item} />
+          </span>
           {meta}
         </>
       ) : (
@@ -712,6 +789,10 @@ function SkillItem({
           <span className="skill-row-content">
             <span className="skill-row-top">
               {name}
+              <span className="skill-version-line">
+                <span>{versionLabel(item)}</span>
+                <UpdateBadge item={item} />
+              </span>
               {meta}
             </span>
             {description}
@@ -775,12 +856,14 @@ function Detail({
   apiScope,
   home,
   onUninstall,
+  onUpdated,
   onClose,
 }: {
   item: Installation;
   apiScope: string;
   home: string;
   onUninstall: () => void;
+  onUpdated: (item: Installation) => void;
   onClose: () => void;
 }) {
   const [detail, setDetail] = useState<SkillDetail>();
@@ -816,7 +899,26 @@ function Detail({
       setOpening(false);
     }
   }
+  const [sourceDialog, setSourceDialog] = useState(false);
+  const [checkingItem, setCheckingItem] = useState(false);
   const p = item.provenance;
+  const t = item.tracking;
+  async function checkItem() {
+    setCheckingItem(true);
+    setActionError("");
+    try {
+      onUpdated(
+        await api<Installation>(
+          `/skills/${item.id}/check?scope=${encodeURIComponent(apiScope)}`,
+          { method: "POST" },
+        ),
+      );
+    } catch (error) {
+      setActionError((error as Error).message);
+    } finally {
+      setCheckingItem(false);
+    }
+  }
   return (
     <>
       <div className="detail-heading">
@@ -1060,7 +1162,8 @@ function Detail({
                     ) : (
                       <Folder size={13} />
                     )}
-                    {TOOLS[location.tool]}
+                    <ToolLogo tool={location.tool} />
+                    <span className="sr-only">{TOOLS[location.tool]}</span>
                   </span>
                   <span>
                     {location.kind === "broken"
@@ -1101,14 +1204,37 @@ function Detail({
               </div>
             )}
             <div className="section-kicker">来源与版本记录</div>
+            <div className="version-actions">
+              <UpdateBadge item={item} />
+              <button
+                className="secondary-button"
+                onClick={() => void checkItem()}
+                disabled={checkingItem || !(p || t)}
+              >
+                <RefreshCw
+                  size={13}
+                  className={checkingItem ? "spinning" : ""}
+                />
+                {checkingItem ? "检查中…" : "检查此 Skill"}
+              </button>
+              {!p && (
+                <button
+                  className="secondary-button"
+                  onClick={() => setSourceDialog(true)}
+                >
+                  <Link2 size={13} />
+                  {t ? "编辑来源" : "补录来源"}
+                </button>
+              )}
+            </div>
             <dl className="metadata-list">
               <dt>来源</dt>
-              <dd>{p?.source ?? "来源未知，可在后续版本中关联"}</dd>
-              {p?.sourceUrl && (
+              <dd>{p?.source ?? t?.source ?? "未登记来源"}</dd>
+              {(p?.sourceUrl || t?.sourceUrl) && (
                 <>
                   <dt>来源地址</dt>
                   <dd>
-                    <code>{p.sourceUrl}</code>
+                    <code>{p?.sourceUrl ?? t?.sourceUrl}</code>
                   </dd>
                 </>
               )}
@@ -1118,10 +1244,10 @@ function Detail({
                 <span className="field-note">作者元数据，不代表已核验版本</span>
               </dd>
               <dt>跟踪目标</dt>
-              <dd>{p?.ref ?? "未记录"}</dd>
-              <dt>安装提交</dt>
+              <dd>{p?.ref ?? t?.ref ?? "默认分支 / 当前本地来源"}</dd>
+              <dt>{p ? "安装记录提交" : "关联时核验提交"}</dt>
               <dd>
-                <code>{p?.commit ?? "未记录"}</code>
+                <code>{p?.commit ?? t?.baseline?.commit ?? "未记录"}</code>
                 {p?.commit && (
                   <span className="field-note">来自锁记录，尚未重放核验</span>
                 )}
@@ -1135,13 +1261,61 @@ function Detail({
                   </dd>
                 </>
               )}
-              <dt>远端检查</dt>
+              {(p?.skillPath || t?.skillPath) && (
+                <>
+                  <dt>来源目录</dt>
+                  <dd>
+                    <code>{p?.skillPath ?? t?.skillPath}</code>
+                  </dd>
+                </>
+              )}
+              <dt>更新检查</dt>
               <dd>
-                <span className="status-unknown">未检查</span>
+                <UpdateBadge item={item} />
                 <span className="field-note">
-                  本版本仅盘点本地安装，未请求上游
+                  {item.update?.message ?? "尚未请求上游"}
                 </span>
               </dd>
+              <dt>本地内容核验</dt>
+              <dd>
+                {item.update?.localState === "clean"
+                  ? "内容已核验一致"
+                  : item.update?.localState === "modified"
+                    ? "本地已修改"
+                    : "尚无可信核验结果"}
+              </dd>
+              {item.update?.checkedAt && (
+                <>
+                  <dt>检查时间</dt>
+                  <dd>
+                    {new Date(item.update.checkedAt).toLocaleString("zh-CN")}
+                  </dd>
+                </>
+              )}
+              {item.update?.upstreamCommit && (
+                <>
+                  <dt>上游提交</dt>
+                  <dd>
+                    <code>{item.update.upstreamCommit}</code>
+                  </dd>
+                </>
+              )}
+              {item.update?.upstreamVersion && (
+                <>
+                  <dt>上游声明版本</dt>
+                  <dd>{item.update.upstreamVersion}</dd>
+                </>
+              )}
+              {t && (
+                <>
+                  <dt>手动来源基线</dt>
+                  <dd>
+                    {t.baseline
+                      ? "关联时内容核验一致"
+                      : "历史版本未知，关联时内容不同"}
+                  </dd>
+                </>
+              )}
               {item.author && (
                 <>
                   <dt>作者</dt>
@@ -1164,6 +1338,17 @@ function Detail({
           </>
         )}
       </div>
+      {sourceDialog && (
+        <SourceDialog
+          item={item}
+          scope={apiScope}
+          onClose={() => setSourceDialog(false)}
+          onSaved={(updated) => {
+            onUpdated(updated);
+            setSourceDialog(false);
+          }}
+        />
+      )}
       <div className="detail-footer">
         <ShieldCheck size={12} /> 读取现有文件，未改动安装内容
       </div>

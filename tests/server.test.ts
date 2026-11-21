@@ -13,11 +13,10 @@ import { createServer } from "../src/server/index.js";
 
 let fixture: string;
 let home: string;
-const token = "test-token-for-isolated-session";
-const headers = { host: "127.0.0.1", authorization: `Bearer ${token}` };
+const headers = { host: "127.0.0.1", "x-skills-console": "1" };
 const servers: Awaited<ReturnType<typeof createServer>>[] = [];
 async function server(extra = {}) {
-  const s = await createServer({ home, token, ...extra });
+  const s = await createServer({ home, ...extra });
   servers.push(s);
   return s.app;
 }
@@ -80,12 +79,12 @@ describe("loopback session boundary", () => {
     expect(response.json().error).toContain("其他进程修改");
     expect(await readFile(configPath, "utf8")).toBe(external);
   });
-  it("requires a session, loopback host and same-origin requests", async () => {
+  it("allows direct local access and rejects foreign hosts and origins", async () => {
     const app = await server();
     expect(
       (await app.inject({ url: "/api/state", headers: { host: "127.0.0.1" } }))
         .statusCode,
-    ).toBe(401);
+    ).toBe(200);
     expect(
       (
         await app.inject({

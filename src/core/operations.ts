@@ -401,6 +401,9 @@ export class SkillOperations {
             catalog.source.info.sourceType === "github"
               ? await catalog.source.treeHash(candidate)
               : await contentHash(staged, 2),
+          ...(catalog.source.info.sourceType === "github"
+            ? {}
+            : { skillFolderHashAlgorithm: "skills-content-v2" }),
           installedAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         });

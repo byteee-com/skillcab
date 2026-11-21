@@ -1,6 +1,7 @@
 import {
   mkdtemp,
   mkdir,
+  readFile,
   realpath,
   rm,
   symlink,
@@ -74,15 +75,27 @@ await skill(
   "A Skill for the installation workflow",
   "# Installed reader\n\nInstalled through the Web UI.",
 );
+const manualSource = join(fixture, "manual-source");
+await mkdir(manualSource);
+await writeFile(
+  join(manualSource, "SKILL.md"),
+  await readFile(join(home, ".codex/skills/local-notes/SKILL.md")),
+);
 await mkdir(".local", { recursive: true });
 await writeFile(
   ".local/e2e-state.json",
-  JSON.stringify({ home, project, secondProject, installSource, openLog }),
+  JSON.stringify({
+    home,
+    project,
+    secondProject,
+    installSource,
+    openLog,
+    manualSource,
+  }),
 );
 const { app } = await createServer({
   home,
   projects: [project],
-  token: "browser-test-session",
   configPath: join(fixture, "config.json"),
   openDirectory: async (path) => {
     await writeFile(openLog, JSON.stringify({ path }));
