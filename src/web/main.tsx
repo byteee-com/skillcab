@@ -1,4 +1,11 @@
-import { StrictMode, useEffect, useMemo, useRef, useState } from "react";
+import {
+  StrictMode,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
 import { createRoot } from "react-dom/client";
 import {
   ArrowDownAZ,
@@ -6,15 +13,15 @@ import {
   Check,
   ChevronRight,
   CircleHelp,
-  Code2,
   Copy,
   File,
-  FileCode2,
   Folder,
   FolderOpen,
   Globe2,
+  LayoutGrid,
   Layers3,
   Link2,
+  List,
   Loader2,
   PanelLeftClose,
   Plus,
@@ -59,6 +66,16 @@ const relativeHome = (path: string, home: string) =>
 const sourceName = (item: Installation) =>
   item.provenance?.source ?? MANAGERS[item.manager];
 const hasIssue = (item: Installation) => item.diagnostics.length > 0;
+const toolNames = (item: Installation) =>
+  [...new Set(item.locations.map((l) => TOOLS[l.tool]))].join(" / ");
+const hue = (name: string) =>
+  [...name].reduce((sum, char) => (sum * 31 + char.charCodeAt(0)) % 360, 7);
+const monogram = (name: string) =>
+  name
+    .replace(/[^a-z0-9]/gi, "")
+    .charAt(0)
+    .toUpperCase() || "S";
+const VIEW_KEY = "skills-console:view";
 
 function App() {
   const [state, setState] = useState<AppState>();
@@ -78,6 +95,9 @@ function App() {
   const [addingProject, setAddingProject] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showScan, setShowScan] = useState(false);
+  const [view, setView] = useState<"cards" | "list">(() =>
+    localStorage.getItem(VIEW_KEY) === "list" ? "list" : "cards",
+  );
   const searchRef = useRef<HTMLInputElement>(null);
   const home = state?.home ?? "";
   const project = state?.projects.find((p) => p.id === scope);
@@ -127,6 +147,7 @@ function App() {
     return () => controller.abort();
     // The project registry may update without changing the chosen scope.
   }, [scope, !!state, revision]);
+  useEffect(() => localStorage.setItem(VIEW_KEY, view), [view]);
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
       if (
@@ -268,7 +289,7 @@ function App() {
         </div>
       </aside>
 
-      <main className={`workspace ${selected ? "has-selection" : ""}`}>
+      <main className="workspace">
         <header className="workspace-heading">
           <button
             className="mobile-menu icon-button"
@@ -294,35 +315,37 @@ function App() {
           </button>
         </header>
         <div className="inventory-summary" aria-label="盘点概览">
-          <span>
+          <div className="stat">
+            <span>安装总数</span>
             <strong>
               {filtered.length === items.length
                 ? items.length
                 : `${filtered.length} / ${items.length}`}
-            </strong>{" "}
-            份安装
-          </span>
-          <span>
-            <i className="tiny-dot teal" />
+            </strong>
+          </div>
+          <div className="stat">
+            <span>
+              <i className="tiny-dot teal" /> CLI 记录
+            </span>
             <strong>
               {items.filter((i) => i.manager === "skills-cli").length}
-            </strong>{" "}
-            CLI 记录
-          </span>
-          <span>
-            <i className="tiny-dot gray" />
-            <strong>
-              {items.filter((i) => i.manager === "local").length}
-            </strong>{" "}
-            本地内容
-          </span>
+            </strong>
+          </div>
+          <div className="stat">
+            <span>
+              <i className="tiny-dot gray" /> 本地内容
+            </span>
+            <strong>{items.filter((i) => i.manager === "local").length}</strong>
+          </div>
           <button
-            className={issuesOnly ? "summary-active" : ""}
+            className={`stat stat-warn ${issuesOnly ? "summary-active" : ""}`}
             onClick={() => setIssuesOnly((v) => !v)}
             aria-pressed={issuesOnly}
           >
-            <TriangleAlert size={13} />
-            <strong>{issueCount}</strong> 需留意
+            <span>
+              <TriangleAlert size={12} /> 需留意
+            </span>
+            <strong>{issueCount}</strong>
           </button>
         </div>
         <div className="inventory-body">
@@ -372,6 +395,24 @@ function App() {
               >
                 <ArrowDownAZ size={16} />
               </button>
+              <div className="view-toggle" role="group" aria-label="视图">
+                <button
+                  aria-label="卡片视图"
+                  title="卡片视图"
+                  aria-pressed={view === "cards"}
+                  onClick={() => setView("cards")}
+                >
+                  <LayoutGrid size={15} />
+                </button>
+                <button
+                  aria-label="列表视图"
+                  title="列表视图"
+                  aria-pressed={view === "list"}
+                  onClick={() => setView("list")}
+                >
+                  <List size={15} />
+                </button>
+              </div>
             </div>
             {scope !== "global" && (
               <label className="global-toggle">
@@ -452,49 +493,20 @@ function App() {
                   )}
                 </div>
               ) : (
-                <ul className="skill-list">
+                <ul
+                  className={`skill-list ${view === "cards" ? "is-cards" : ""}`}
+                >
                   {filtered.map((item) => (
                     <li key={item.id}>
-                      <button
-                        className={`skill-row ${selected?.id === item.id ? "selected" : ""}`}
-                        onClick={() => setSelected(item)}
-                        aria-pressed={selected?.id === item.id}
-                      >
-                        <span
-                          className={`skill-icon ${hasIssue(item) ? "has-issue" : ""}`}
-                        >
-                          {hasIssue(item) ? (
-                            <TriangleAlert size={15} aria-label="需留意" />
-                          ) : (
-                            <FileCode2 size={15} strokeWidth={1.7} />
-                          )}
-                        </span>
-                        <span className="skill-row-content">
-                          <span className="skill-row-top">
-                            <span className="skill-name">
-                              {item.name}
-                              {item.scope.kind === "global" &&
-                                scope !== "global" && (
-                                  <span className="scope-tag">全局</span>
-                                )}
-                            </span>
-                            <span className="skill-row-meta">
-                              <span className={`manager-dot ${item.manager}`} />
-                              {sourceName(item)}
-                              <span className="meta-separator">·</span>
-                              {[
-                                ...new Set(
-                                  item.locations.map((l) => TOOLS[l.tool]),
-                                ),
-                              ].join(" / ")}
-                            </span>
-                          </span>
-                          <span className="skill-description">
-                            {item.description ||
-                              "暂无描述 · 查看详情了解安装状态"}
-                          </span>
-                        </span>
-                      </button>
+                      <SkillItem
+                        item={item}
+                        card={view === "cards"}
+                        selected={selected?.id === item.id}
+                        showScope={
+                          item.scope.kind === "global" && scope !== "global"
+                        }
+                        onSelect={() => setSelected(item)}
+                      />
                     </li>
                   ))}
                 </ul>
@@ -536,30 +548,26 @@ function App() {
               </div>
             )}
           </section>
-          <aside
-            className={`detail-panel ${selected ? "detail-open" : ""}`}
-            aria-label="Skill 详情"
-          >
-            {selected ? (
-              <Detail
-                key={selected.id}
-                item={selected}
-                apiScope={selected.scope.kind === "global" ? "global" : scope}
-                home={home}
-                onClose={() => setSelected(undefined)}
-              />
-            ) : (
-              <div className="detail-placeholder">
-                <div className="placeholder-icon">
-                  <Code2 size={22} strokeWidth={1.5} />
-                </div>
-                <h2>选择一个 Skill</h2>
-                <p>查看文档、安装位置与已有的版本记录。</p>
-              </div>
-            )}
-          </aside>
         </div>
       </main>
+      {selected && (
+        <div className="drawer-layer">
+          <div
+            className="drawer-backdrop"
+            aria-hidden="true"
+            onClick={() => setSelected(undefined)}
+          />
+          <aside className="detail-drawer" aria-label="Skill 详情">
+            <Detail
+              key={selected.id}
+              item={selected}
+              apiScope={selected.scope.kind === "global" ? "global" : scope}
+              home={home}
+              onClose={() => setSelected(undefined)}
+            />
+          </aside>
+        </div>
+      )}
       {addingProject && (
         <AddProject
           home={home}
@@ -581,6 +589,88 @@ function App() {
         />
       )}
     </div>
+  );
+}
+
+function SkillItem({
+  item,
+  card,
+  selected,
+  showScope,
+  onSelect,
+}: {
+  item: Installation;
+  card: boolean;
+  selected: boolean;
+  showScope: boolean;
+  onSelect: () => void;
+}) {
+  const issue = hasIssue(item);
+  const icon = (
+    <span className="skill-icon" aria-hidden="true">
+      {monogram(item.name)}
+    </span>
+  );
+  const name = (
+    <span className="skill-name">
+      {item.name}
+      {showScope && <span className="scope-tag">全局</span>}
+    </span>
+  );
+  const meta = (
+    <span className="skill-row-meta">
+      <span className={`manager-dot ${item.manager}`} />
+      {sourceName(item)}
+      <span className="meta-separator">·</span>
+      {toolNames(item)}
+    </span>
+  );
+  const description = (
+    <span className="skill-description">
+      {item.description || "暂无描述 · 查看详情了解安装状态"}
+    </span>
+  );
+  return (
+    <button
+      className={`${card ? "skill-card" : "skill-row"} ${selected ? "selected" : ""}`}
+      onClick={onSelect}
+      aria-pressed={selected}
+      style={{ "--hue": hue(item.name) } as CSSProperties}
+    >
+      {card ? (
+        <>
+          <span className="card-head">
+            {icon}
+            {name}
+            {issue && (
+              <span className="issue-pill">
+                <TriangleAlert size={11} aria-label="需留意" /> 留意
+              </span>
+            )}
+          </span>
+          {description}
+          {meta}
+        </>
+      ) : (
+        <>
+          {icon}
+          <span className="skill-row-content">
+            <span className="skill-row-top">
+              {name}
+              {meta}
+            </span>
+            {description}
+          </span>
+          {issue && (
+            <TriangleAlert
+              size={14}
+              className="row-issue"
+              aria-label="需留意"
+            />
+          )}
+        </>
+      )}
+    </button>
   );
 }
 
@@ -657,7 +747,13 @@ function Detail({
   return (
     <>
       <div className="detail-heading">
-        <div className="detail-title">
+        <div
+          className="detail-title"
+          style={{ "--hue": hue(item.name) } as CSSProperties}
+        >
+          <span className="skill-icon" aria-hidden="true">
+            {monogram(item.name)}
+          </span>
           <h2>{item.name}</h2>
           <button
             className="icon-button"
