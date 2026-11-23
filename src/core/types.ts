@@ -124,4 +124,5 @@ export interface AppState {
   home: string;
   projects: Project[];
   configIssue?: string;
+  projectPicker?: boolean;
 }

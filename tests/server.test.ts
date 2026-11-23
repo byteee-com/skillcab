@@ -5,6 +5,7 @@ import {
   readFile,
   realpath,
   rm,
+  symlink,
   writeFile,
 } from "node:fs/promises";
 import { join } from "node:path";
@@ -176,6 +177,74 @@ describe("loopback session boundary", () => {
         })
       ).statusCode,
     ).toBe(200);
+  });
+
+  it("registers a batch once per real directory and rejects invalid batches without writing", async () => {
+    const configPath = join(fixture, "config.json");
+    const first = join(fixture, "project one");
+    const second = join(fixture, "project-two");
+    const alias = join(fixture, "alias");
+    const file = join(fixture, "file.txt");
+    await Promise.all([mkdir(first), mkdir(second), writeFile(file, "sample")]);
+    await symlink(first, alias, "dir");
+    const app = await server({ configPath });
+    const add = (paths: string[]) =>
+      app.inject({
+        method: "POST",
+        url: "/api/projects/batch",
+        headers,
+        payload: { paths },
+      });
+    const invalid = await add([first, file]);
+    expect(invalid.statusCode).toBe(400);
+    expect(invalid.json().error).toContain(file);
+    await expect(readFile(configPath, "utf8")).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+    const valid = await add([alias, first, second]);
+    expect(valid.statusCode).toBe(200);
+    expect(valid.json().map((item: { path: string }) => item.path)).toEqual([
+      first,
+      second,
+    ]);
+    expect((await add([second, first])).statusCode).toBe(200);
+    expect(JSON.parse(await readFile(configPath, "utf8")).projects).toEqual([
+      { path: first },
+      { path: second },
+    ]);
+  });
+
+  it("uses paths chosen by the local folder dialog and leaves cancelled picks untouched", async () => {
+    const configPath = join(fixture, "config.json");
+    const first = join(fixture, "project one");
+    const second = join(fixture, "project-two");
+    await Promise.all([mkdir(first), mkdir(second)]);
+    let selections: string[] = [];
+    let calls = 0;
+    const app = await server({
+      configPath,
+      pickProjectFolders: async () => {
+        calls++;
+        return selections;
+      },
+    });
+    const request = { method: "POST" as const, url: "/api/projects/pick" };
+    const crossSite = await app.inject({
+      ...request,
+      headers: { ...headers, origin: "https://example.invalid" },
+    });
+    expect(crossSite.statusCode).toBe(403);
+    expect(calls).toBe(0);
+    expect((await app.inject({ ...request, headers })).json()).toEqual([]);
+    await expect(readFile(configPath, "utf8")).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+    selections = [first, second];
+    expect((await app.inject({ ...request, headers })).json()).toHaveLength(2);
+    expect(JSON.parse(await readFile(configPath, "utf8")).projects).toEqual([
+      { path: first },
+      { path: second },
+    ]);
   });
 
   it("returns details only for observed installations in registered scopes", async () => {

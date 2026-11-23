@@ -1,6 +1,6 @@
 import Fastify from "fastify";
 import { homedir } from "node:os";
-import { dirname, extname, join, resolve } from "node:path";
+import { dirname, extname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readFile, realpath, stat } from "node:fs/promises";
 import { getSkillDetail, scanSkills } from "../core/scanner.js";
@@ -13,6 +13,7 @@ import {
 } from "../core/operations.js";
 import { VersionService } from "../core/updates.js";
 import { openDirectory } from "./open-directory.js";
+import { pickProjectFolders } from "./pick-project-folders.js";
 import type { AppState, Inventory, ScanOptions } from "../core/types.js";
 
 export interface ServerOptions extends Omit<ScanOptions, "project"> {
@@ -21,6 +22,27 @@ export interface ServerOptions extends Omit<ScanOptions, "project"> {
   webDirectory?: string;
   instanceId?: string;
   openDirectory?: (path: string) => Promise<void>;
+  pickProjectFolders?: () => Promise<string[]>;
+}
+function validProjectPaths(paths: unknown): paths is string[] {
+  return (
+    Array.isArray(paths) &&
+    paths.length <= 100 &&
+    paths.every(
+      (path) =>
+        typeof path === "string" &&
+        path.length <= 4096 &&
+        !path.includes("\0") &&
+        (isAbsolute(path) || path.startsWith("~/")),
+    )
+  );
+}
+function projectError(error: unknown): string {
+  return errorCode(error) === "ENOENT"
+    ? "目录不存在，请检查路径。"
+    : error instanceof Error && !("code" in error)
+      ? error.message
+      : "项目目录无法读取。";
 }
 const MIME: Record<string, string> = {
   ".js": "text/javascript",
@@ -37,6 +59,10 @@ export async function createServer(options: ServerOptions = {}) {
     home,
   );
   await store.load(options.projects);
+  const pickFolders =
+    options.pickProjectFolders ??
+    (process.platform === "darwin" ? pickProjectFolders : undefined);
+  let pickingProjects = false;
   const versions = new VersionService(
     join(dirname(store.path), "versions.json"),
     home,
@@ -133,6 +159,7 @@ export async function createServer(options: ServerOptions = {}) {
       home,
       projects: store.projects,
       configIssue: store.issue,
+      projectPicker: Boolean(pickFolders),
     }),
   );
   app.post("/api/projects", async (request, reply) => {
@@ -150,14 +177,43 @@ export async function createServer(options: ServerOptions = {}) {
     try {
       return await store.add(request.body.path.trim());
     } catch (error) {
-      return reply.code(400).send({
-        error:
-          errorCode(error) === "ENOENT"
-            ? "目录不存在，请检查路径。"
-            : error instanceof Error && !("code" in error)
-              ? error.message
-              : "项目目录无法读取。",
-      });
+      return reply.code(400).send({ error: projectError(error) });
+    }
+  });
+  app.post(
+    "/api/projects/batch",
+    { bodyLimit: 128 * 1024 },
+    async (request, reply) => {
+      const paths = plainObject(request.body) ? request.body.paths : undefined;
+      if (!validProjectPaths(paths) || !paths.length)
+        return reply
+          .code(400)
+          .send({ error: "请提供 1 至 100 个项目的绝对路径或 ~/ 路径。" });
+      try {
+        return await store.addMany(paths);
+      } catch (error) {
+        return reply.code(400).send({ error: projectError(error) });
+      }
+    },
+  );
+  app.post("/api/projects/pick", async (_request, reply) => {
+    if (!pickFolders)
+      return reply.code(400).send({ error: "此系统请粘贴项目路径。" });
+    if (store.issue) return reply.code(400).send({ error: store.issue });
+    if (pickingProjects)
+      return reply.code(409).send({ error: "系统文件夹窗口已打开。" });
+    pickingProjects = true;
+    try {
+      const paths = await pickFolders();
+      if (!validProjectPaths(paths))
+        return reply
+          .code(400)
+          .send({ error: "请选择最多 100 个有效的项目文件夹。" });
+      return await store.addMany(paths);
+    } catch (error) {
+      return reply.code(400).send({ error: projectError(error) });
+    } finally {
+      pickingProjects = false;
     }
   });
   app.get<{ Querystring: { scope?: string } }>(

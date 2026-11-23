@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { readFile, writeFile } from "node:fs/promises";
+import { pathToFileURL } from "node:url";
 
 test("installs to a project, opens its directory, uninstalls and restores it", async ({
   page,
@@ -266,4 +267,49 @@ test("records manual sources, checks versions, shows logos and persists results 
   );
   await dialog.getByRole("button", { name: "移除关联", exact: true }).click();
   await expect(dialog).toHaveCount(0);
+});
+
+test("registers dragged paths together and uses the system picker when paths are hidden", async ({
+  page,
+}) => {
+  const fixture = JSON.parse(
+    await readFile(".local/e2e-state.json", "utf8"),
+  ) as { dropProjects: string[] };
+  await page.goto("/");
+  const list = page.getByRole("navigation", { name: "项目列表" });
+  await expect(
+    list.getByRole("button", { name: "sample-project" }),
+  ).toBeVisible();
+  const target = page.locator(".add-project-button");
+  const paths = fixture.dropProjects.map((path) => pathToFileURL(path).href);
+  const transfer = await page.evaluateHandle((urls) => {
+    const data = new DataTransfer();
+    data.setData("text/uri-list", urls.join("\r\n"));
+    return data;
+  }, paths);
+  await target.dispatchEvent("dragover", { dataTransfer: transfer });
+  await expect(target).toHaveClass(/is-dropping/);
+  await target.dispatchEvent("drop", { dataTransfer: transfer });
+  await expect(
+    page.getByRole("heading", { level: 1, name: "dragged one" }),
+  ).toBeVisible();
+  await expect(list.getByRole("button", { name: "dragged-two" })).toBeVisible();
+  await expect(target).not.toHaveClass(/is-dropping/);
+
+  const hiddenPath = await page.evaluateHandle(() => {
+    const data = new DataTransfer();
+    data.items.add(new File([], "picked-project"));
+    return data;
+  });
+  await target.dispatchEvent("drop", { dataTransfer: hiddenPath });
+  await expect(
+    page.getByRole("heading", { level: 1, name: "picked-project" }),
+  ).toBeVisible();
+
+  await page.reload();
+  await expect(list.getByRole("button", { name: "dragged one" })).toBeVisible();
+  await expect(list.getByRole("button", { name: "dragged-two" })).toBeVisible();
+  await expect(
+    list.getByRole("button", { name: "picked-project" }),
+  ).toBeVisible();
 });

@@ -5,6 +5,7 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type DragEvent,
 } from "react";
 import { createRoot } from "react-dom/client";
 import {
@@ -37,6 +38,7 @@ import remarkGfm from "remark-gfm";
 import { ToolLogo } from "./ToolLogos.js";
 import { UpdateBadge, SourceDialog, versionLabel } from "./VersionUI.js";
 import { api } from "./api.js";
+import { droppedProjectPaths } from "./project-drop.js";
 import {
   InstallDialog,
   UninstallDialog,
@@ -102,7 +104,13 @@ function App() {
   const [includeGlobal, setIncludeGlobal] = useState(false);
   const [descending, setDescending] = useState(false);
   const [selected, setSelected] = useState<Installation>();
-  const [addingProject, setAddingProject] = useState(false);
+  const [projectDialog, setProjectDialog] = useState<{
+    paths: string;
+    note?: string;
+  }>();
+  const [projectError, setProjectError] = useState("");
+  const [projectPending, setProjectPending] = useState(false);
+  const [projectDropActive, setProjectDropActive] = useState(false);
   const [installing, setInstalling] = useState(false);
   const [uninstalling, setUninstalling] = useState<Installation>();
   const [operation, setOperation] = useState<OperationResult>();
@@ -112,6 +120,7 @@ function App() {
     localStorage.getItem(VIEW_KEY) === "list" ? "list" : "cards",
   );
   const searchRef = useRef<HTMLInputElement>(null);
+  const projectBusy = useRef(false);
   const home = state?.home ?? "";
   const project = state?.projects.find((p) => p.id === scope);
 
@@ -176,7 +185,7 @@ function App() {
       if (event.key === "Escape") {
         if (document.querySelector("dialog[open]")) return;
         setSelected(undefined);
-        setAddingProject(false);
+        setProjectDialog(undefined);
         setSidebarOpen(false);
       }
     };
@@ -276,6 +285,68 @@ function App() {
     setRevision((v) => v + 1);
     setOperation(result);
   }
+  function openProjectDialog(paths = "", note?: string) {
+    setProjectError("");
+    setProjectDialog({ paths, note });
+  }
+  async function addProjects(paths?: string[]) {
+    if (projectBusy.current) return;
+    projectBusy.current = true;
+    setProjectPending(true);
+    setProjectError("");
+    try {
+      const projects = await api<Project[]>(
+        paths ? "/projects/batch" : "/projects/pick",
+        {
+          method: "POST",
+          body: paths ? JSON.stringify({ paths }) : undefined,
+        },
+      );
+      if (!projects.length) return;
+      setState((current) => {
+        if (!current) return current;
+        const registered = new Map(current.projects.map((p) => [p.id, p]));
+        for (const item of projects) registered.set(item.id, item);
+        return { ...current, projects: [...registered.values()] };
+      });
+      setProjectDialog(undefined);
+      chooseScope(projects[0].id);
+    } catch (error) {
+      setProjectError((error as Error).message);
+    } finally {
+      projectBusy.current = false;
+      setProjectPending(false);
+    }
+  }
+  function dropProjects(event: DragEvent<HTMLButtonElement>) {
+    event.preventDefault();
+    setProjectDropActive(false);
+    if (projectBusy.current) return;
+    const transfer = event.dataTransfer;
+    const paths = droppedProjectPaths(transfer);
+    if (paths.length) {
+      openProjectDialog(paths.join("\n"));
+      void addProjects(paths);
+      return;
+    }
+    const entries = Array.from(transfer.items)
+      .filter((item) => item.kind === "file")
+      .map((item) => item.webkitGetAsEntry?.());
+    if (
+      transfer.types.includes("Files") &&
+      (!entries.length || entries.some((entry) => !entry || entry.isDirectory))
+    ) {
+      openProjectDialog(
+        "",
+        state?.projectPicker
+          ? "浏览器只提供文件夹名称。请在系统窗口中选择要添加的文件夹。"
+          : "浏览器只提供文件夹名称。请粘贴这些文件夹的完整路径。",
+      );
+      if (state?.projectPicker) void addProjects();
+    } else {
+      openProjectDialog("", "请拖入项目文件夹或粘贴项目路径。");
+    }
+  }
   return (
     <div className="app-shell">
       {sidebarOpen && (
@@ -309,7 +380,7 @@ function App() {
           <button
             title="添加项目"
             aria-label="添加项目"
-            onClick={() => setAddingProject(true)}
+            onClick={() => openProjectDialog()}
           >
             <Plus size={16} />
           </button>
@@ -334,10 +405,21 @@ function App() {
           )}
         </nav>
         <button
-          className="add-project-button"
-          onClick={() => setAddingProject(true)}
+          className={`add-project-button${projectDropActive ? " is-dropping" : ""}`}
+          aria-label="添加项目"
+          onClick={() => openProjectDialog()}
+          onDragOver={(event) => {
+            event.preventDefault();
+            event.dataTransfer.dropEffect = "copy";
+            setProjectDropActive(true);
+          }}
+          onDragLeave={() => setProjectDropActive(false)}
+          onDrop={dropProjects}
         >
           <Plus size={14} /> 添加项目
+          <span className="project-drop-hint" aria-hidden="true">
+            {projectDropActive ? "松开添加" : "拖入文件夹"}
+          </span>
         </button>
         <div className="sidebar-bottom">
           <div className="local-status">
@@ -691,24 +773,19 @@ function App() {
           onApplied={onApplied}
         />
       )}
-      {addingProject && (
+      {projectDialog && (
         <AddProject
+          {...projectDialog}
           home={home}
-          onClose={() => setAddingProject(false)}
-          onAdded={(item) => {
-            setState((current) =>
-              current
-                ? {
-                    ...current,
-                    projects: current.projects.some((p) => p.id === item.id)
-                      ? current.projects
-                      : [...current.projects, item],
-                  }
-                : current,
-            );
-            chooseScope(item.id);
-            setAddingProject(false);
+          pending={projectPending}
+          error={projectError}
+          onClose={() => setProjectDialog(undefined)}
+          onPaths={(paths) => {
+            setProjectDialog({ ...projectDialog, paths });
+            setProjectError("");
           }}
+          onSubmit={(paths) => void addProjects(paths)}
+          onPick={state?.projectPicker ? () => void addProjects() : undefined}
         />
       )}
     </div>
@@ -1358,16 +1435,25 @@ function Detail({
 
 function AddProject({
   home,
+  paths,
+  note,
+  pending,
+  error,
   onClose,
-  onAdded,
+  onPaths,
+  onSubmit,
+  onPick,
 }: {
   home: string;
+  paths: string;
+  note?: string;
+  pending: boolean;
+  error: string;
   onClose: () => void;
-  onAdded: (project: Project) => void;
+  onPaths: (paths: string) => void;
+  onSubmit: (paths: string[]) => void;
+  onPick?: () => void;
 }) {
-  const [path, setPath] = useState("");
-  const [error, setError] = useState("");
-  const [pending, setPending] = useState(false);
   const dialog = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     dialog.current?.showModal();
@@ -1375,24 +1461,24 @@ function AddProject({
   return (
     <dialog
       ref={dialog}
-      onCancel={onClose}
+      aria-labelledby="add-project-title"
+      onCancel={(event) => {
+        event.preventDefault();
+        if (!pending) onClose();
+      }}
       onClick={(event) => {
-        if (event.target === dialog.current) onClose();
+        if (!pending && event.target === dialog.current) onClose();
       }}
       className="project-dialog"
     >
       <form
         onSubmit={(event) => {
           event.preventDefault();
-          setPending(true);
-          setError("");
-          api<Project>("/projects", {
-            method: "POST",
-            body: JSON.stringify({ path }),
-          })
-            .then(onAdded)
-            .catch((error) => setError(error.message))
-            .finally(() => setPending(false));
+          const inputs = paths
+            .split(/\r?\n/)
+            .map((s) => s.trim())
+            .filter(Boolean);
+          if (inputs.length) onSubmit(inputs);
         }}
       >
         <div className="dialog-top">
@@ -1403,44 +1489,64 @@ function AddProject({
             className="icon-button"
             type="button"
             aria-label="关闭添加项目"
+            disabled={pending}
             onClick={onClose}
           >
             <X size={17} />
           </button>
         </div>
-        <h2>添加项目</h2>
-        <p>
-          登记一个本机目录，查看它的 Skill 安装。
-          <br />
-          项目内的文件和配置保持原样。
-        </p>
+        <h2 id="add-project-title">添加项目</h2>
+        {note && <p>{note}</p>}
+        {onPick && (
+          <button
+            type="button"
+            className="secondary-button project-folder-picker"
+            onClick={onPick}
+            disabled={pending}
+          >
+            <FolderOpen size={15} /> 选取文件夹
+          </button>
+        )}
         <label htmlFor="project-path">项目目录</label>
-        <input
+        <textarea
           autoFocus
           id="project-path"
+          rows={3}
           placeholder={`${home || "~"}/Code/my-project`}
-          value={path}
-          onChange={(e) => setPath(e.target.value)}
-          required
+          value={paths}
+          onChange={(e) => onPaths(e.target.value)}
+          disabled={pending}
           autoComplete="off"
+          spellCheck={false}
+          aria-describedby="project-path-note"
         />
-        <span className="input-note">支持绝对路径或 ~/ 开头的路径</span>
+        <span className="input-note" id="project-path-note">
+          每行一个绝对路径或 ~/ 路径
+        </span>
         {error && (
           <div className="notice error-notice" role="alert">
             {error}
           </div>
         )}
         <div className="dialog-actions">
-          <button type="button" className="secondary-button" onClick={onClose}>
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={onClose}
+            disabled={pending}
+          >
             取消
           </button>
-          <button className="primary-button" disabled={pending}>
+          <button
+            className="primary-button"
+            disabled={pending || !paths.trim()}
+          >
             {pending ? (
               <Loader2 size={14} className="spinning" />
             ) : (
               <Plus size={14} />
             )}
-            添加项目
+            {pending ? "处理中…" : "添加项目"}
           </button>
         </div>
       </form>

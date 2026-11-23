@@ -66,15 +66,38 @@ export class ProjectStore {
     this.projects = [...new Map(this.projects.map((p) => [p.id, p])).values()];
   }
   async add(input: string): Promise<Project> {
-    const project = await projectAt(input, this.home);
+    const [project] = await this.addMany([input]);
+    return project;
+  }
+  async addMany(inputs: string[]): Promise<Project[]> {
+    const resolved = await Promise.all(
+      inputs.map(async (input) => {
+        try {
+          return await projectAt(input, this.home);
+        } catch (error) {
+          if (inputs.length === 1) throw error;
+          const message =
+            errorCode(error) === "ENOENT"
+              ? "目录不存在"
+              : error instanceof Error && !("code" in error)
+                ? error.message
+                : "目录无法读取";
+          throw new Error(`${input}：${message}`);
+        }
+      }),
+    );
+    const selected = [...new Map(resolved.map((p) => [p.id, p])).values()];
+    if (!selected.length) return selected;
     return this.enqueue(async () => {
       if (this.issue) throw new Error(this.issue);
-      if (this.projects.some((p) => p.id === project.id)) return project;
-      if (this.projects.length >= 100) throw new Error("最多登记 100 个项目。");
-      const projects = [...this.projects, project];
+      const known = new Set(this.projects.map((p) => p.id));
+      const additions = selected.filter((p) => !known.has(p.id));
+      if (!additions.length) return selected;
+      const projects = [...this.projects, ...additions];
+      if (projects.length > 100) throw new Error("最多登记 100 个项目。");
       await this.save(projects);
       this.projects = projects;
-      return project;
+      return selected;
     });
   }
   private enqueue<T>(action: () => Promise<T>): Promise<T> {
@@ -94,14 +117,16 @@ export class ProjectStore {
     if (current !== this.observedContent) {
       throw new Error("项目配置已被其他进程修改，请重启后重试；原文件已保留。");
     }
-    await mkdir(dirname(this.path), { recursive: true });
-    const temp = `${this.path}.${randomBytes(6).toString("hex")}.tmp`;
     const content =
       JSON.stringify(
         { version: 1, projects: projects.map((p) => ({ path: p.path })) },
         null,
         2,
       ) + "\n";
+    if (Buffer.byteLength(content) > 128 * 1024)
+      throw new Error("项目配置过大，请减少登记的目录数量。");
+    await mkdir(dirname(this.path), { recursive: true });
+    const temp = `${this.path}.${randomBytes(6).toString("hex")}.tmp`;
     await writeFile(temp, content, { mode: 0o600 });
     await rename(temp, this.path);
     this.observedContent = content;
