@@ -126,6 +126,6 @@ HTTP 写入和目录打开使用上述本机请求边界校验。安装来源/�
 
 不依赖 Git 仓库整体 HEAD 判断更新。上游状态与 localState 分离；无法确定本地基线时 localState 保持 unknown。所有内容核验经过受限临时复制（20 MiB / 2000 项，不跟随内部软链接），不执行脚本。结果键包括来源证据和手动关联，附本地内容指纹、时间和来源版本；刷新不联网，来源/锁或本地内容变化使缓存失效；24 小时后需要重新检查。批次最多 3 项并发，相同来源/ref 的获取共用 Promise，finally 清理所有临时仓库。
 
-`server/service.ts` 通过 detached 子进程、关闭 stdin、独立日志启动后台服务。配置目录的 service.json 记录 PID、URL 和随机实例标识；实例标识只用于避免旧 PID 记录误杀，非网页访问凭据。status / stop 在发信号前用回环 health 响应核对应用、实例和 PID；无法确认时不发信号。启动锁阻止并发启动，启动失败保留日志并给出路径。无开机自启；构建新版本后需 stop / ui 重启。
+`server/service.ts` 通过 detached 子进程、关闭 stdin、独立日志启动后台服务。配置目录的 `service.json` 记录 PID、URL、实例标识及自定义扫描目录。发信号前用回环 health 响应核对应用、实例和 PID，启动和停止共用同一个锁。macOS 和 Linux 上的新版 CLI 读取旧后台的项目和扫描配置，等待旧进程退出或完成关闭，再启动新版。同版本及更早版本的 CLI 复用已运行的服务。旧记录缺少自定义目录时，从全局扫描结果恢复。启动失败时通过日志排查。
 
 工具 SVG 由 Lobe Icons 的 Claude / Codex / Cursor 图标本地打包，按 MIT 保留许可证，见 third-party-notices.md；页面不请求第三方图片。

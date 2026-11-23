@@ -8,6 +8,7 @@ import { randomUUID } from "node:crypto";
 import { version } from "../package.json";
 import { VersionService } from "./core/updates.js";
 import {
+  defaultPort,
   startBackground,
   runningService,
   stopService,
@@ -94,10 +95,14 @@ program
   .option("--home <path>", "指定用户目录，用于隔离扫描", homedir())
   .option("--config <path>", "指定本工具项目配置文件")
   .option("--root <path...>", "额外的全局扫描目录")
-  .option("--port <number>", "指定端口；默认 59726（0 使用随机端口）", "59726")
+  .option(
+    "--port <number>",
+    `指定端口；默认 ${defaultPort}（0 使用随机端口）`,
+    String(defaultPort),
+  )
   .option("--no-open", "不自动打开浏览器")
   .option("--foreground", "在前台运行；Ctrl+C 停止")
-  .action(async (options) => {
+  .action(async (options, command: Command) => {
     const port = Number(options.port);
     if (!Number.isInteger(port) || port < 0 || port > 65535)
       throw new Error("端口须为 0 到 65535 的整数。");
@@ -109,17 +114,18 @@ program
       : join(home, ".config/skills-console/config.json");
     let url: string;
     if (!options.foreground) {
-      const args = [
-        "--home",
-        home,
-        "--config",
+      const { record, reused, upgradedFrom } = await startBackground(
         configPath,
-        "--port",
-        String(port),
-      ];
-      if (projects.length) args.push("--project", ...projects);
-      if (options.root?.length) args.push("--root", ...options.root);
-      const { record, reused } = await startBackground(configPath, args);
+        {
+          version,
+          home:
+            command.getOptionValueSource("home") === "cli" ? home : undefined,
+          port:
+            command.getOptionValueSource("port") === "cli" ? port : undefined,
+          projects: options.project,
+          roots: options.root,
+        },
+      );
       url = record.url;
       for (const path of projects) {
         const response = await fetch(`${url}api/projects`, {
@@ -128,7 +134,9 @@ program
             "Content-Type": "application/json",
             "X-Skills-Console": "1",
           },
-          body: JSON.stringify({ path: resolve(path) }),
+          body: JSON.stringify({
+            path: path.startsWith("~/") ? path : resolve(path),
+          }),
         });
         if (!response.ok)
           console.error(
@@ -136,8 +144,14 @@ program
             ((await response.json()) as { error: string }).error,
           );
       }
+      const action = upgradedFrom
+        ? `已从 v${upgradedFrom} 升级`
+        : reused
+          ? "已连接现有"
+          : "已启动";
+      const runningVersion = record.appVersion ? `  v${record.appVersion}` : "";
       console.log(
-        `\n  skillcab  v${version}\n  ${url}\n\n  ${reused ? "已连接现有" : "已启动"}后台服务 · 关闭终端后继续运行\n  npx skillcab stop 停止 · npx skillcab status 查看状态\n`,
+        `\n  skillcab${runningVersion}\n  ${url}\n\n  ${action}后台服务 · 关闭终端后继续运行\n  npx skillcab stop 停止 · npx skillcab status 查看状态\n`,
       );
       if (reused && options.root?.length)
         console.log("已有服务的扫描根目录保持原配置；修改 --root 请先 stop。 ");
@@ -157,18 +171,10 @@ program
         })),
       });
       url = `${await app.listen({ host: "127.0.0.1", port })}/`;
-      if (process.env.SKILLS_CONSOLE_BACKGROUND === "1") {
-        await mkdir(dirname(configPath), { recursive: true, mode: 0o700 });
-        await writeFile(
-          servicePath(configPath),
-          JSON.stringify({ version: 1, pid: process.pid, url, instanceId }),
-          { mode: 0o600 },
-        );
-      }
-      console.log(
-        `\n  skillcab  v${version}\n  ${url}\n\n  扫描只读 · 操作先确认 · Ctrl+C 停止前台服务\n`,
-      );
+      let closing = false;
       const shutdown = () => {
+        if (closing) return;
+        closing = true;
         void app.close().then(async () => {
           const record = JSON.parse(
             await readFile(servicePath(configPath), "utf8").catch(() => "{}"),
@@ -178,8 +184,27 @@ program
           process.exit(0);
         });
       };
-      process.once("SIGINT", shutdown);
-      process.once("SIGTERM", shutdown);
+      process.on("SIGINT", shutdown);
+      process.on("SIGTERM", shutdown);
+      if (process.env.SKILLS_CONSOLE_BACKGROUND === "1") {
+        await mkdir(dirname(configPath), { recursive: true, mode: 0o700 });
+        await writeFile(
+          servicePath(configPath),
+          JSON.stringify({
+            version: 1,
+            pid: process.pid,
+            url,
+            instanceId,
+            roots: ((options.root ?? []) as string[]).map((path) =>
+              resolve(path),
+            ),
+          }),
+          { mode: 0o600 },
+        );
+      }
+      console.log(
+        `\n  skillcab  v${version}\n  ${url}\n\n  扫描只读 · 操作先确认 · Ctrl+C 停止前台服务\n`,
+      );
     }
     if (options.open) {
       const [command, args] =
@@ -215,7 +240,7 @@ for (const command of ["status", "stop"] as const) {
         const running = await runningService(config);
         console.log(
           running
-            ? `后台服务运行中 · PID ${running.pid}\n${running.url}`
+            ? `后台服务运行中${running.appVersion ? ` · v${running.appVersion}` : ""} · PID ${running.pid}\n${running.url}`
             : "没有正在运行的后台服务。",
         );
       }
