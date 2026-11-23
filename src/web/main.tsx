@@ -423,7 +423,7 @@ function App() {
         </button>
         <div className="sidebar-bottom">
           <div className="local-status">
-            <i /> 本机运行 <span>v{state?.version ?? "0.2.0"}</span>
+            <i /> 本机运行 {state && <span>v{state.version}</span>}
           </div>
           <div className="privacy-note">
             <ShieldCheck size={13} /> 扫描只读，操作先确认

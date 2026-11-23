@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { dirname, extname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readFile, realpath, stat } from "node:fs/promises";
+import { version } from "../../package.json";
 import { getSkillDetail, scanSkills } from "../core/scanner.js";
 import { errorCode, plainObject } from "../core/document.js";
 import { ProjectStore } from "./projects.js";
@@ -148,14 +149,14 @@ export async function createServer(options: ServerOptions = {}) {
   }
   app.get("/api/health", async () => ({
     app: "skills-console",
-    version: "0.3.0",
+    version,
     pid: process.pid,
     instanceId: options.instanceId,
   }));
   app.get(
     "/api/state",
     async (): Promise<AppState> => ({
-      version: "0.3.0",
+      version,
       home,
       projects: store.projects,
       configIssue: store.issue,

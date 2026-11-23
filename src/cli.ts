@@ -5,6 +5,7 @@ import { homedir } from "node:os";
 import { resolve, join, dirname } from "node:path";
 import { stat, writeFile, readFile, rm, mkdir } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
+import { version } from "../package.json";
 import { VersionService } from "./core/updates.js";
 import {
   startBackground,
@@ -19,7 +20,7 @@ import { createServer } from "./server/index.js";
 const program = new Command()
   .name("skillcab")
   .description("全局与项目 Agent Skills 的本机管理工具")
-  .version("0.3.0");
+  .version(version);
 program
   .command("list")
   .description("扫描并列出实际安装，不修改 Skill 或 lock")
@@ -136,7 +137,7 @@ program
           );
       }
       console.log(
-        `\n  skillcab  v0.3.0\n  ${url}\n\n  ${reused ? "已连接现有" : "已启动"}后台服务 · 关闭终端后继续运行\n  npx skillcab stop 停止 · npx skillcab status 查看状态\n`,
+        `\n  skillcab  v${version}\n  ${url}\n\n  ${reused ? "已连接现有" : "已启动"}后台服务 · 关闭终端后继续运行\n  npx skillcab stop 停止 · npx skillcab status 查看状态\n`,
       );
       if (reused && options.root?.length)
         console.log("已有服务的扫描根目录保持原配置；修改 --root 请先 stop。 ");
@@ -165,7 +166,7 @@ program
         );
       }
       console.log(
-        `\n  skillcab  v0.3.0\n  ${url}\n\n  扫描只读 · 操作先确认 · Ctrl+C 停止前台服务\n`,
+        `\n  skillcab  v${version}\n  ${url}\n\n  扫描只读 · 操作先确认 · Ctrl+C 停止前台服务\n`,
       );
       const shutdown = () => {
         void app.close().then(async () => {
