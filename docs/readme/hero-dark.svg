@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="400" viewBox="0 0 1200 400" role="img" aria-labelledby="title desc">
+  <title id="title">Skills Console — Skill 安装结构</title>
+  <desc id="desc">同一范围内，三个工具的安装入口可以链接到同一个共享 Skill 目录。</desc>
+  <defs>
+    <pattern id="registration" width="20" height="20" patternUnits="userSpaceOnUse">
+      <path d="M20 0H0V20" fill="none" stroke="#3c4a32" stroke-width="1"/>
+    </pattern>
+  </defs>
+  <rect x="1" y="1" width="1198" height="398" rx="26" fill="#151913" stroke="#404b36" stroke-width="2"/>
+  <rect x="366" y="51" width="394" height="298" fill="url(#registration)"/>
+  <g fill="none" stroke-width="3">
+    <path d="M380 92H456Q470 92 470 106V176Q470 200 494 200H584M380 308H513Q527 308 527 294V224Q527 200 551 200H584M380 200H584" stroke="#819475"/>
+    <path d="M584 200H736M719 188L736 200L719 212" stroke="#c5f36a"/>
+  </g>
+  <circle cx="470" cy="92" r="4" fill="#819475"/>
+  <circle cx="527" cy="308" r="4" fill="#819475"/>
+  <circle cx="584" cy="200" r="10" fill="#151913" stroke="#c5f36a" stroke-width="3"/>
+  <circle cx="584" cy="200" r="3" fill="#c5f36a"/>
+  <g font-family="Arial, Helvetica, sans-serif" font-weight="700" font-size="30" fill="#edf3e6">
+    <rect x="59" y="50" width="321" height="84" rx="13" fill="#20271b" stroke="#404b36" stroke-width="2"/>
+    <path d="M83 92h13m-4-4 4 4-4 4M102 85v14" fill="none" stroke="#819475" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="119" y="86" font-size="30">Codex</text>
+    <text x="119" y="115" font-size="24" font-family="Menlo, Consolas, 'Liberation Mono', monospace" font-weight="400" fill="#b2bea8">.codex/skills</text>
+    <circle cx="380" cy="92" r="6" fill="#20271b" stroke="#819475" stroke-width="3"/>
+    <rect x="59" y="158" width="321" height="84" rx="13" fill="#20271b" stroke="#404b36" stroke-width="2"/>
+    <path d="M83 200h13m-4-4 4 4-4 4M102 193v14" fill="none" stroke="#819475" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="119" y="194" font-size="30">Claude Code</text>
+    <text x="119" y="223" font-size="24" font-family="Menlo, Consolas, 'Liberation Mono', monospace" font-weight="400" fill="#b2bea8">.claude/skills</text>
+    <circle cx="380" cy="200" r="6" fill="#20271b" stroke="#819475" stroke-width="3"/>
+    <rect x="59" y="266" width="321" height="84" rx="13" fill="#20271b" stroke="#404b36" stroke-width="2"/>
+    <path d="M83 308h13m-4-4 4 4-4 4M102 301v14" fill="none" stroke="#819475" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="119" y="302" font-size="30">Cursor</text>
+    <text x="119" y="331" font-size="24" font-family="Menlo, Consolas, 'Liberation Mono', monospace" font-weight="400" fill="#b2bea8">.cursor/skills</text>
+    <circle cx="380" cy="308" r="6" fill="#20271b" stroke="#819475" stroke-width="3"/>
+  </g>
+  <path d="M762 65h-17v18m0 234v18h17m354-270h17v18m0 234v18h-17" fill="none" stroke="#819475" stroke-width="2"/>
+  <path d="M787 73H1076L1120 117V325H787Q760 325 760 298V100Q760 73 787 73Z" fill="#171d14" stroke="#404b36" stroke-width="2"/>
+  <path d="M769 60H1068L1117 109V309Q1117 325 1101 325H769Q753 325 753 309V76Q753 60 769 60Z" fill="#262e21" stroke="#404b36" stroke-width="2"/>
+  <path d="M1068 60v37q0 12 12 12h37Z" fill="#354c22" stroke="#404b36" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M787 104h62m-62 15h36" fill="none" stroke="#819475" stroke-width="3" stroke-linecap="round"/>
+  <text x="782" y="204" fill="#edf3e6" font-family="Arial, Helvetica, sans-serif" font-size="71" font-weight="700" letter-spacing="-2.1">SKILL.md</text>
+  <path d="M777 235h315" stroke="#404b36" stroke-width="2"/>
+  <rect x="774" y="256" width="327" height="46" rx="8" fill="#354c22"/>
+  <text x="787" y="286" fill="#edf3e6" font-family="Menlo, Consolas, 'Liberation Mono', monospace" font-size="24">.agents/skills/&lt;name&gt;</text>
+</svg>
