@@ -1,11 +1,15 @@
 {
-  "name": "skills-console",
+  "name": "skillcab",
   "version": "0.3.0",
   "description": "A local console for discovering, installing and managing global and project Agent Skills",
   "type": "module",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/byteee-com/skills-console.git"
+  },
   "bin": {
-    "skills-console": "dist/cli.js"
+    "skillcab": "dist/cli.js"
   },
   "exports": {
     ".": {

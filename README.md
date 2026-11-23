@@ -11,18 +11,13 @@
 
 ## 快速开始
 
-在仓库根目录运行。需要 Node.js **22.20+** 和 pnpm，仓库推荐的 Node.js 版本见 [`.node-version`](.node-version)。
+需要 Node.js **22.20+**。在要管理的项目目录运行下面的命令即可启动。 [npm 上的 skillcab](https://www.npmjs.com/package/skillcab)
 
 ```bash
-pnpm install
-pnpm build
-pnpm start ui
+npx skillcab ui
 ```
 
-浏览器会打开 [本机控制台](http://127.0.0.1:59726/)。服务默认在后台运行，关闭终端后仍可访问。再次启动会复用现有服务并登记当前目录，通过 `pnpm start status` 查看状态，或用 `pnpm start stop` 停止服务。
-
-> [!NOTE]
-> 当前从源码运行，也可用 `pnpm pack` 生成 npm 安装包。npm 发布后可用 `npx skills-console ui` 启动。
+浏览器会打开本机控制台。服务默认在后台运行，关闭终端后仍可访问。再次启动会复用现有服务并登记当前目录。 [打开本机控制台](http://127.0.0.1:59726/)
 
 ## 日常使用
 
@@ -71,30 +66,30 @@ pnpm start ui
 
 ## 命令速查
 
-| 想做什么                    | 命令                                                          |
-| --------------------------- | ------------------------------------------------------------- |
-| 启动 Web 界面并登记指定项目 | `pnpm start ui --project /absolute/path/to/project`           |
-| 盘点全局安装                | `pnpm start list --global`                                    |
-| 以 JSON 盘点项目安装        | `pnpm start list --project /absolute/path/to/project --json`  |
-| 以 JSON 检查全局更新        | `pnpm start check --json`                                     |
-| 以 JSON 检查项目更新        | `pnpm start check --project /absolute/path/to/project --json` |
-| 查看或停止后台服务          | `pnpm start status` / `pnpm start stop`                       |
+| 想做什么                    | 命令                                                            |
+| --------------------------- | --------------------------------------------------------------- |
+| 启动 Web 界面并登记指定项目 | `npx skillcab ui --project /absolute/path/to/project`           |
+| 盘点全局安装                | `npx skillcab list --global`                                    |
+| 以 JSON 盘点项目安装        | `npx skillcab list --project /absolute/path/to/project --json`  |
+| 以 JSON 检查全局更新        | `npx skillcab check --json`                                     |
+| 以 JSON 检查项目更新        | `npx skillcab check --project /absolute/path/to/project --json` |
+| 查看或停止后台服务          | `npx skillcab status` / `npx skillcab stop`                     |
 
 <details>
 <summary>端口、额外扫描目录与隔离配置</summary>
 
 ```bash
 # 自定义启动端口并跳过打开浏览器
-pnpm start ui --port 4317 --no-open
+npx skillcab ui --port 4317 --no-open
 
 # 前台调试，按 Ctrl+C 停止
-pnpm start ui --foreground --no-open
+npx skillcab ui --foreground --no-open
 
 # 增加全局扫描目录
-pnpm start ui --root /absolute/path/to/custom-skills
+npx skillcab ui --root /absolute/path/to/custom-skills
 
 # 隔离用户目录和配置
-pnpm start ui --home /absolute/path/to/test-home --config /absolute/path/to/config.json
+npx skillcab ui --home /absolute/path/to/test-home --config /absolute/path/to/config.json
 ```
 
 `list` 默认盘点全局，`--global` 和 `--project` 互斥。设置独立 `--home` 后，扫描会忽略真实账号的 `CODEX_HOME` 和 `XDG_STATE_HOME`。使用自定义 `--home` 或 `--config` 启动时，`status` 和 `stop` 也要传入相同配置。
@@ -129,6 +124,14 @@ pnpm start ui --home /absolute/path/to/test-home --config /absolute/path/to/conf
 目前优先在 macOS 上验证。目录与链接实现兼顾 Windows 和 Linux，两者尚待实机验证。
 
 ## 开发与验证
+
+从源码运行需要 pnpm。仓库推荐的 Node.js 版本见 [`.node-version`](.node-version)。
+
+```bash
+pnpm install
+pnpm build
+pnpm start ui
+```
 
 ```bash
 pnpm check

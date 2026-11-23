@@ -17,7 +17,7 @@ import { toolNames } from "./core/paths.js";
 import { createServer } from "./server/index.js";
 
 const program = new Command()
-  .name("skills-console")
+  .name("skillcab")
   .description("全局与项目 Agent Skills 的本机管理工具")
   .version("0.3.0");
 program
@@ -136,7 +136,7 @@ program
           );
       }
       console.log(
-        `\n  Skills Console  v0.3.0\n  ${url}\n\n  ${reused ? "已连接现有" : "已启动"}后台服务 · 关闭终端后继续运行\n  skills-console stop 停止 · skills-console status 查看状态\n`,
+        `\n  Skills Console  v0.3.0\n  ${url}\n\n  ${reused ? "已连接现有" : "已启动"}后台服务 · 关闭终端后继续运行\n  npx skillcab stop 停止 · npx skillcab status 查看状态\n`,
       );
       if (reused && options.root?.length)
         console.log("已有服务的扫描根目录保持原配置；修改 --root 请先 stop。 ");
