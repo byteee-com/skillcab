@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="400" viewBox="0 0 1200 400" role="img" aria-labelledby="title desc">
-  <title id="title">Skills Console — Skill 安装结构</title>
+  <title id="title">skillcab — Skill 安装结构</title>
   <desc id="desc">同一范围内，三个工具的安装入口可以链接到同一个共享 Skill 目录。</desc>
   <defs>
     <pattern id="registration" width="20" height="20" patternUnits="userSpaceOnUse">

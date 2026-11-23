@@ -291,7 +291,7 @@ function App() {
             <Layers3 size={19} strokeWidth={1.8} />
           </span>
           <div>
-            Skills Console<span>本机 Skill 工作区</span>
+            skillcab<span>本机 Skill 工作区</span>
           </div>
         </div>
         <button

@@ -1,4 +1,4 @@
-# Skills Console
+# skillcab
 
 **用 CLI 和本机 Web 界面管理全局与项目里的 Agent Skills。** 在一个地方查看 Codex、Claude Code 和 Cursor 的安装位置、来源与更新状态。
 

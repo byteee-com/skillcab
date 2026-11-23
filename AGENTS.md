@@ -1,4 +1,4 @@
-# Skills Console
+# skillcab
 
 本机 Skill 管理工具，一个 npm 包，提供 CLI 和本地 Web UI。
 

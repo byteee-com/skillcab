@@ -39,7 +39,7 @@ try {
   app = result.app;
   const address = await app.listen({ host: "127.0.0.1", port: 0 });
   const html = await fetch(address).then((r) => r.text());
-  assert.ok(html.includes("Skills Console"));
+  assert.ok(html.includes("skillcab"));
   const script = html.match(/src="([^"]+\.js)"/)?.[1];
   assert.ok(script, "Compiled web script is referenced");
   const asset = await fetch(`${address}${script}`);
