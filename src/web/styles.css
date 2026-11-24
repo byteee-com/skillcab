@@ -470,6 +470,12 @@ kbd {
   font-size: 11px;
   pointer-events: none;
 }
+.project-drop-notice {
+  margin: 6px 4px 0;
+  color: var(--text-2);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
 .sidebar-bottom {
   margin-top: auto;
   padding: 12px 8px 0;

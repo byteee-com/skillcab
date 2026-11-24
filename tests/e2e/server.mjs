@@ -23,6 +23,10 @@ const dropProjects = [
   join(fixture, "dragged-two"),
 ];
 const pickProject = join(fixture, "picked-project");
+const finderProjects = [
+  join(fixture, "finder-project"),
+  join(fixture, "finder-project-two"),
+];
 const openLog = join(fixture, "opened-directories.json");
 async function skill(root, name, description, body) {
   await mkdir(join(root, name), { recursive: true });
@@ -82,7 +86,9 @@ await skill(
 );
 const manualSource = join(fixture, "manual-source");
 await mkdir(manualSource);
-await Promise.all([...dropProjects, pickProject].map((path) => mkdir(path)));
+await Promise.all(
+  [...dropProjects, ...finderProjects, pickProject].map((path) => mkdir(path)),
+);
 await writeFile(
   join(manualSource, "SKILL.md"),
   await readFile(join(home, ".codex/skills/local-notes/SKILL.md")),
@@ -98,6 +104,7 @@ await writeFile(
     openLog,
     manualSource,
     dropProjects,
+    finderProjects,
   }),
 );
 const { app } = await createServer({
@@ -108,6 +115,8 @@ const { app } = await createServer({
     await writeFile(openLog, JSON.stringify({ path }));
   },
   pickProjectFolders: async () => [pickProject],
+  readFinderDrag: async (paths) =>
+    paths ? { changeCount: "2", paths: finderProjects } : { changeCount: "1" },
 });
 await app.listen({ host: "127.0.0.1", port: 4318 });
 async function close() {

@@ -247,6 +247,55 @@ describe("loopback session boundary", () => {
     ]);
   });
 
+  it("registers only a fresh Finder drop matching the browser's whole folder batch", async () => {
+    const configPath = join(fixture, "config.json");
+    const first = join(fixture, "one");
+    const second = join(fixture, "二");
+    await Promise.all([mkdir(first), mkdir(second)]);
+    let changeCount = "10";
+    let reads = 0;
+    const app = await server({
+      configPath,
+      readFinderDrag: async (includePaths: boolean) => {
+        reads++;
+        return {
+          changeCount,
+          paths: includePaths ? [second, first] : undefined,
+        };
+      },
+    });
+    const snapshot = await app.inject({
+      method: "POST",
+      url: "/api/projects/drop/snapshot",
+      headers,
+    });
+    expect(snapshot.json()).toEqual({ changeCount: "10" });
+    const drop = (names: string[], origin?: string) =>
+      app.inject({
+        method: "POST",
+        url: "/api/projects/drop",
+        headers: origin ? { ...headers, origin } : headers,
+        payload: { before: "10", names },
+      });
+    expect(
+      (await drop(["one", "二"], "https://unrelated.invalid")).statusCode,
+    ).toBe(403);
+    expect(reads).toBe(1);
+    expect((await drop(["one", "二"])).statusCode).toBe(409);
+    changeCount = "11";
+    expect((await drop(["one"])).statusCode).toBe(409);
+    expect((await drop(["one", "other"])).statusCode).toBe(409);
+    await expect(readFile(configPath, "utf8")).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+    expect(
+      (await drop(["one", "二"]))
+        .json()
+        .projects.map((item: { path: string }) => item.path),
+    ).toEqual([second, first]);
+    expect((await drop(["one", "二"])).statusCode).toBe(409);
+  });
+
   it("returns details only for observed installations in registered scopes", async () => {
     const root = join(home, ".agents/skills/example");
     await mkdir(root, { recursive: true });

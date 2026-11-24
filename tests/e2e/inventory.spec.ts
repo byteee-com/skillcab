@@ -269,12 +269,12 @@ test("records manual sources, checks versions, shows logos and persists results 
   await expect(dialog).toHaveCount(0);
 });
 
-test("registers dragged paths together and uses the system picker when paths are hidden", async ({
+test("registers direct and Finder folder drops without opening a dialog", async ({
   page,
 }) => {
   const fixture = JSON.parse(
     await readFile(".local/e2e-state.json", "utf8"),
-  ) as { dropProjects: string[] };
+  ) as { dropProjects: string[]; finderProjects: string[] };
   await page.goto("/");
   const list = page.getByRole("navigation", { name: "项目列表" });
   await expect(
@@ -296,12 +296,44 @@ test("registers dragged paths together and uses the system picker when paths are
   await expect(list.getByRole("button", { name: "dragged-two" })).toBeVisible();
   await expect(target).not.toHaveClass(/is-dropping/);
 
-  const hiddenPath = await page.evaluateHandle(() => {
-    const data = new DataTransfer();
-    data.items.add(new File([], "picked-project"));
-    return data;
-  });
-  await target.dispatchEvent("drop", { dataTransfer: hiddenPath });
+  const cdp = await page.context().newCDPSession(page);
+  const dropFinderFolders = async () => {
+    const box = await target.boundingBox();
+    if (!box) throw new Error("Project drop target is not visible");
+    const position = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+    const data = {
+      items: [],
+      files: fixture.finderProjects,
+      dragOperationsMask: 1,
+    };
+    for (const type of ["dragEnter", "dragOver", "drop"] as const) {
+      await cdp.send("Input.dispatchDragEvent", { type, ...position, data });
+    }
+  };
+  await dropFinderFolders();
+  await expect(
+    page.getByRole("heading", {
+      level: 1,
+      name: "finder-project",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(
+    list.getByRole("button", { name: "finder-project-two" }),
+  ).toBeVisible();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+
+  await dropFinderFolders();
+  await expect(
+    page.getByRole("status").filter({ hasText: "路径无法核实" }),
+  ).toBeVisible();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(
+    list.getByRole("button", { name: "picked-project" }),
+  ).toHaveCount(0);
+
+  await target.click();
+  await page.getByRole("button", { name: "选取文件夹" }).click();
   await expect(
     page.getByRole("heading", { level: 1, name: "picked-project" }),
   ).toBeVisible();

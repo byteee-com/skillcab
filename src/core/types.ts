@@ -125,4 +125,5 @@ export interface AppState {
   projects: Project[];
   configIssue?: string;
   projectPicker?: boolean;
+  finderProjectDrop?: boolean;
 }

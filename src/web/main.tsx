@@ -38,7 +38,7 @@ import remarkGfm from "remark-gfm";
 import { ToolLogo } from "./ToolLogos.js";
 import { UpdateBadge, SourceDialog, versionLabel } from "./VersionUI.js";
 import { api } from "./api.js";
-import { droppedProjectPaths } from "./project-drop.js";
+import { droppedFolderNames, droppedProjectPaths } from "./project-drop.js";
 import {
   InstallDialog,
   UninstallDialog,
@@ -85,6 +85,11 @@ const monogram = (name: string) =>
     .charAt(0)
     .toUpperCase() || "S";
 const VIEW_KEY = "skills-console:view";
+const hiddenDropPath = "这次拖放的路径无法核实。点击「添加项目」选择文件夹。";
+const snapshotFinderDrag = () =>
+  api<{ changeCount: string }>("/projects/drop/snapshot", { method: "POST" })
+    .then(({ changeCount }) => changeCount)
+    .catch(() => undefined);
 
 function App() {
   const [state, setState] = useState<AppState>();
@@ -106,11 +111,11 @@ function App() {
   const [selected, setSelected] = useState<Installation>();
   const [projectDialog, setProjectDialog] = useState<{
     paths: string;
-    note?: string;
   }>();
   const [projectError, setProjectError] = useState("");
   const [projectPending, setProjectPending] = useState(false);
   const [projectDropActive, setProjectDropActive] = useState(false);
+  const [projectDropNotice, setProjectDropNotice] = useState("");
   const [installing, setInstalling] = useState(false);
   const [uninstalling, setUninstalling] = useState<Installation>();
   const [operation, setOperation] = useState<OperationResult>();
@@ -121,6 +126,9 @@ function App() {
   );
   const searchRef = useRef<HTMLInputElement>(null);
   const projectBusy = useRef(false);
+  const finderDragBaseline = useRef<Promise<string | undefined> | undefined>(
+    undefined,
+  );
   const home = state?.home ?? "";
   const project = state?.projects.find((p) => p.id === scope);
 
@@ -170,6 +178,11 @@ function App() {
     // The project registry may update without changing the chosen scope.
   }, [scope, !!state, revision]);
   useEffect(() => localStorage.setItem(VIEW_KEY, view), [view]);
+  useEffect(() => {
+    // Taking a new snapshot when Finder takes focus can race the drag itself.
+    if (state?.finderProjectDrop)
+      finderDragBaseline.current = snapshotFinderDrag();
+  }, [state?.finderProjectDrop]);
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
       if (
@@ -285,23 +298,30 @@ function App() {
     setRevision((v) => v + 1);
     setOperation(result);
   }
-  function openProjectDialog(paths = "", note?: string) {
+  function openProjectDialog() {
+    setProjectDropNotice("");
     setProjectError("");
-    setProjectDialog({ paths, note });
+    setProjectDialog({ paths: "" });
   }
-  async function addProjects(paths?: string[]) {
+  async function addProjects(
+    endpoint: string,
+    payload?: object,
+    fromDrop = false,
+  ) {
     if (projectBusy.current) return;
     projectBusy.current = true;
     setProjectPending(true);
     setProjectError("");
     try {
-      const projects = await api<Project[]>(
-        paths ? "/projects/batch" : "/projects/pick",
-        {
-          method: "POST",
-          body: paths ? JSON.stringify({ paths }) : undefined,
-        },
-      );
+      const result = await api<
+        Project[] | { projects: Project[]; changeCount: string }
+      >(endpoint, {
+        method: "POST",
+        body: payload ? JSON.stringify(payload) : undefined,
+      });
+      const projects = Array.isArray(result) ? result : result.projects;
+      if (!Array.isArray(result))
+        finderDragBaseline.current = Promise.resolve(result.changeCount);
       if (!projects.length) return;
       setState((current) => {
         if (!current) return current;
@@ -312,39 +332,37 @@ function App() {
       setProjectDialog(undefined);
       chooseScope(projects[0].id);
     } catch (error) {
-      setProjectError((error as Error).message);
+      (fromDrop ? setProjectDropNotice : setProjectError)(
+        (error as Error).message,
+      );
     } finally {
       projectBusy.current = false;
       setProjectPending(false);
     }
   }
-  function dropProjects(event: DragEvent<HTMLButtonElement>) {
+  async function dropProjects(event: DragEvent<HTMLButtonElement>) {
     event.preventDefault();
     setProjectDropActive(false);
     if (projectBusy.current) return;
     const transfer = event.dataTransfer;
     const paths = droppedProjectPaths(transfer);
+    setProjectDropNotice("");
     if (paths.length) {
-      openProjectDialog(paths.join("\n"));
-      void addProjects(paths);
-      return;
-    }
-    const entries = Array.from(transfer.items)
-      .filter((item) => item.kind === "file")
-      .map((item) => item.webkitGetAsEntry?.());
-    if (
-      transfer.types.includes("Files") &&
-      (!entries.length || entries.some((entry) => !entry || entry.isDirectory))
-    ) {
-      openProjectDialog(
-        "",
-        state?.projectPicker
-          ? "浏览器只提供文件夹名称。请在系统窗口中选择要添加的文件夹。"
-          : "浏览器只提供文件夹名称。请粘贴这些文件夹的完整路径。",
-      );
-      if (state?.projectPicker) void addProjects();
+      await addProjects("/projects/batch", { paths }, true);
+      if (state?.finderProjectDrop)
+        finderDragBaseline.current = snapshotFinderDrag();
     } else {
-      openProjectDialog("", "请拖入项目文件夹或粘贴项目路径。");
+      const names = droppedFolderNames(transfer);
+      const before = names.length
+        ? await finderDragBaseline.current
+        : undefined;
+      if (before) {
+        await addProjects("/projects/drop", { before, names }, true);
+      } else {
+        setProjectDropNotice(hiddenDropPath);
+        if (names.length && state?.finderProjectDrop)
+          finderDragBaseline.current = snapshotFinderDrag();
+      }
     }
   }
   return (
@@ -407,6 +425,7 @@ function App() {
         <button
           className={`add-project-button${projectDropActive ? " is-dropping" : ""}`}
           aria-label="添加项目"
+          aria-busy={projectPending}
           onClick={() => openProjectDialog()}
           onDragOver={(event) => {
             event.preventDefault();
@@ -414,13 +433,22 @@ function App() {
             setProjectDropActive(true);
           }}
           onDragLeave={() => setProjectDropActive(false)}
-          onDrop={dropProjects}
+          onDrop={(event) => void dropProjects(event)}
         >
           <Plus size={14} /> 添加项目
           <span className="project-drop-hint" aria-hidden="true">
-            {projectDropActive ? "松开添加" : "拖入文件夹"}
+            {projectPending
+              ? "添加中…"
+              : projectDropActive
+                ? "松开添加"
+                : "拖入文件夹"}
           </span>
         </button>
+        {projectDropNotice && (
+          <p className="project-drop-notice" role="status">
+            {projectDropNotice}
+          </p>
+        )}
         <div className="sidebar-bottom">
           <div className="local-status">
             <i /> 本机运行 {state && <span>v{state.version}</span>}
@@ -784,8 +812,12 @@ function App() {
             setProjectDialog({ ...projectDialog, paths });
             setProjectError("");
           }}
-          onSubmit={(paths) => void addProjects(paths)}
-          onPick={state?.projectPicker ? () => void addProjects() : undefined}
+          onSubmit={(paths) => void addProjects("/projects/batch", { paths })}
+          onPick={
+            state?.projectPicker
+              ? () => void addProjects("/projects/pick")
+              : undefined
+          }
         />
       )}
     </div>
@@ -1436,7 +1468,6 @@ function Detail({
 function AddProject({
   home,
   paths,
-  note,
   pending,
   error,
   onClose,
@@ -1446,7 +1477,6 @@ function AddProject({
 }: {
   home: string;
   paths: string;
-  note?: string;
   pending: boolean;
   error: string;
   onClose: () => void;
@@ -1496,7 +1526,6 @@ function AddProject({
           </button>
         </div>
         <h2 id="add-project-title">添加项目</h2>
-        {note && <p>{note}</p>}
         {onPick && (
           <button
             type="button"

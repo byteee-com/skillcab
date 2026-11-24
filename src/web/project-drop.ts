@@ -22,3 +22,14 @@ export function droppedProjectPaths(transfer: DataTransfer): string[] {
   }
   return paths;
 }
+
+export function droppedFolderNames(transfer: DataTransfer): string[] {
+  const names: string[] = [];
+  for (const item of transfer.items) {
+    if (item.kind !== "file") continue;
+    const entry = item.webkitGetAsEntry?.();
+    if (!entry?.isDirectory) return [];
+    names.push(entry.name);
+  }
+  return names;
+}

@@ -1,6 +1,13 @@
 import Fastify from "fastify";
 import { homedir } from "node:os";
-import { dirname, extname, isAbsolute, join, resolve } from "node:path";
+import {
+  basename,
+  dirname,
+  extname,
+  isAbsolute,
+  join,
+  resolve,
+} from "node:path";
 import { fileURLToPath } from "node:url";
 import { readFile, realpath, stat } from "node:fs/promises";
 import { version } from "../../package.json";
@@ -15,6 +22,7 @@ import {
 import { VersionService } from "../core/updates.js";
 import { openDirectory } from "./open-directory.js";
 import { pickProjectFolders } from "./pick-project-folders.js";
+import { readFinderDrag, type FinderDrag } from "./finder-drag.js";
 import type { AppState, Inventory, ScanOptions } from "../core/types.js";
 
 export interface ServerOptions extends Omit<ScanOptions, "project"> {
@@ -24,7 +32,10 @@ export interface ServerOptions extends Omit<ScanOptions, "project"> {
   instanceId?: string;
   openDirectory?: (path: string) => Promise<void>;
   pickProjectFolders?: () => Promise<string[]>;
+  readFinderDrag?: (paths: boolean) => Promise<FinderDrag>;
 }
+const dragCount = (value: unknown): value is string =>
+  typeof value === "string" && /^\d{1,20}$/.test(value);
 function validProjectPaths(paths: unknown): paths is string[] {
   return (
     Array.isArray(paths) &&
@@ -64,6 +75,10 @@ export async function createServer(options: ServerOptions = {}) {
     options.pickProjectFolders ??
     (process.platform === "darwin" ? pickProjectFolders : undefined);
   let pickingProjects = false;
+  const finderDrag =
+    options.readFinderDrag ??
+    (process.platform === "darwin" ? readFinderDrag : undefined);
+  let usedFinderDrag: string | undefined;
   const versions = new VersionService(
     join(dirname(store.path), "versions.json"),
     home,
@@ -161,6 +176,7 @@ export async function createServer(options: ServerOptions = {}) {
       projects: store.projects,
       configIssue: store.issue,
       projectPicker: Boolean(pickFolders),
+      finderProjectDrop: Boolean(finderDrag),
     }),
   );
   app.post("/api/projects", async (request, reply) => {
@@ -217,6 +233,67 @@ export async function createServer(options: ServerOptions = {}) {
       pickingProjects = false;
     }
   });
+  const unverifiedDrop = "这次拖放的路径无法核实。点击「添加项目」选择文件夹。";
+  app.post("/api/projects/drop/snapshot", async (_request, reply) => {
+    try {
+      const snapshot = await finderDrag?.(false);
+      if (dragCount(snapshot?.changeCount))
+        return { changeCount: snapshot.changeCount };
+    } catch {
+      // The drop can still use paths the browser supplies directly.
+    }
+    return reply.code(400).send({ error: unverifiedDrop });
+  });
+  app.post(
+    "/api/projects/drop",
+    { bodyLimit: 128 * 1024 },
+    async (request, reply) => {
+      const body = request.body;
+      if (
+        !finderDrag ||
+        !plainObject(body) ||
+        !dragCount(body.before) ||
+        !Array.isArray(body.names) ||
+        !body.names.length ||
+        body.names.length > 100 ||
+        !body.names.every(
+          (name) =>
+            typeof name === "string" &&
+            name.length > 0 &&
+            name.length <= 255 &&
+            !name.includes("/") &&
+            !name.includes("\0"),
+        )
+      ) {
+        return reply.code(400).send({ error: unverifiedDrop });
+      }
+      try {
+        const { changeCount, paths } = await finderDrag(true);
+        if (
+          !dragCount(changeCount) ||
+          BigInt(changeCount) <= BigInt(body.before) ||
+          changeCount === usedFinderDrag ||
+          !validProjectPaths(paths) ||
+          paths.length !== body.names.length ||
+          !paths.every(isAbsolute)
+        ) {
+          return reply.code(409).send({ error: unverifiedDrop });
+        }
+        const nativeNames = paths
+          .map((path) => basename(path).normalize())
+          .sort();
+        const browserNames = (body.names as string[])
+          .map((name) => name.normalize())
+          .sort();
+        if (!nativeNames.every((name, index) => name === browserNames[index]))
+          return reply.code(409).send({ error: unverifiedDrop });
+        usedFinderDrag = changeCount;
+        return { projects: await store.addMany(paths), changeCount };
+      } catch (error) {
+        return reply.code(400).send({ error: projectError(error) });
+      }
+    },
+  );
   app.get<{ Querystring: { scope?: string } }>(
     "/api/inventory",
     async (request, reply) => {
